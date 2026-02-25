@@ -1,4 +1,4 @@
-<!-- Naming: MCP Synapse (formerly MCP Router) -->
+﻿<!-- Naming: MCP Synapse (formerly MCP Router) -->
 ﻿﻿﻿﻿﻿# TASKS - Stabilization + Pipeline V1
 
 ## Conventions
@@ -1051,3 +1051,37 @@
 - P4_UI_WIRE_1 PASS (evidence: docs\evidence\P4_UI_WIRE_1_verify_20260223-204650)
 - P4_UI_WIRE_2 PASS (evidence: docs\evidence\P4_UI_WIRE_2_verify_20260223-210228)
 - UI smoke run PASS (routes 9/9) (evidence: docs\evidence\P4_UI_smoke_run_20260223-213051)
+
+
+## P5 — Wiring (packaged, stoppable)
+
+Goal: Move from UI-only stubs to deterministic thin-shell wiring where UI = form state + dispatch + render, and mapping/validation/persistence lives in core.
+
+Hard constraints (inherit SSOT D-024/D-029):
+- UI production path MUST NOT call provider clients directly.
+- No provider/network/protocol logic in UI.
+- Core remains provider-agnostic; no provider-specific branching in core.
+- No new runtime dependencies; no streaming.
+
+Packages (each is independently committable + verifiable):
+
+- P5.3 UI session state (UI-only)
+  - Make toggles/presets/session state stable across in-app navigation (in-memory only).
+  - Evidence: `npm run check` exit 0 + UI network/provider scan 0 hits.
+
+- P5.4 Persisted config (core)
+  - “New Connection → Create” dispatches to core.
+  - Core writes config to the approved store via core surface (no UI file writes).
+  - UI only collects fields and renders results/errors.
+
+- P5.5 Preflight validation (core)
+  - Validate required fields + basic path existence without any provider calls.
+  - UI renders structured errors from core.
+
+- P5.6 Copy Config canonicalization (core)
+  - UI “Copy Config” obtains canonical JSON from core (removes UI hardcode).
+  - Evidence: deterministic output + UI contains no provider logic.
+
+- P5.7 Test (dry-run)
+  - Bind existing dry_run dispatch to persisted config; still zero provider/network calls.
+  - Evidence: deterministic dry_run result returned through single-entrypoint.
