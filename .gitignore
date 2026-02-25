@@ -1,0 +1,44 @@
+﻿# MCP Synapse (mcp-router) .gitignore
+
+# Evidence (keep local, do not publish)
+docs/evidence/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# UI (Svelte/Tauri)
+ui-tauri/node_modules/
+ui-tauri/.svelte-kit/
+ui-tauri/build/
+ui-tauri/dist/
+
+# Tauri/Rust build outputs
+ui-tauri/src-tauri/target/
+
+# Build artifacts at repo root (if any)
+build/
+dist/
+
+# Local data / secrets
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.key
+*.pem
+*.p12
+*.pfx
+*.json.key
+key.json
+.env
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.pytest_cache/
