@@ -28,6 +28,7 @@
   - P5.3 UI session state PASS (UI-only): docs\evidence\P5_3_UI_SESSION_STATE_VERIFY_20260226-012544
   - P5.2 UI→core dry_run dispatch PASS: docs\evidence\P5_WIRING_UI_DISPATCH_20260225-104400
   - P5.5 Preflight validation PASS (provider-free): docs\evidence\P5_5_PREFLIGHT_VERIFY_20260226-022803
+  - P5.6 Copy Config canonicalization PASS (core-generated): docs\evidence\P5_6_COPY_CONFIG_VERIFY_20260226-024338
 - Usage DB: data/usage.db + src/data/usage_db.py
 - Config: data/config.json + src/config/manager.py
 - Provider integration: src/vertex/client.py (uses Google Vertex AI)
