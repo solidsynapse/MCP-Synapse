@@ -1,0 +1,260 @@
+<script lang="ts">
+  import "../app.css";
+  import { page } from "$app/stores";
+
+  type LeafItem = { key: string; label: string; href: string; icon: string };
+  type ParentItem = { key: string; label: string; href: string; icon: string; children: LeafItem[] };
+  type NavItem = LeafItem | ParentItem;
+
+  const NAV: NavItem[] = [
+    { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "D" },
+    { key: "connections", label: "Connections", href: "/connections", icon: "C" },
+    {
+      key: "usage",
+      label: "Usage",
+      href: "/usage/summary",
+      icon: "U",
+      children: [
+        { key: "usage-summary", label: "Summary", href: "/usage/summary", icon: "S" },
+        { key: "usage-history", label: "History", href: "/usage/history", icon: "H" },
+      ],
+    },
+    {
+      key: "policies",
+      label: "Policies",
+      href: "/policies/persona",
+      icon: "P",
+      children: [
+        { key: "policies-persona", label: "Persona", href: "/policies/persona", icon: "P" },
+        { key: "policies-optimizations", label: "Optimizations", href: "/policies/optimizations", icon: "O" },
+      ],
+    },
+    {
+      key: "resilience",
+      label: "Resilience",
+      href: "/resilience/budget",
+      icon: "R",
+      children: [
+        { key: "resilience-budget", label: "Budget", href: "/resilience/budget", icon: "B" },
+        { key: "resilience-interceptors", label: "Interceptors", href: "/resilience/interceptors", icon: "I" },
+      ],
+    },
+  ];
+
+  const SETTINGS: LeafItem = { key: "settings", label: "Settings", href: "/settings", icon: "⚙" };
+
+  function assertNavDepthMax1(items: NavItem[]) {
+    for (const item of items) {
+      if ("children" in item) {
+        for (const child of item.children) {
+          if ((child as unknown as { children?: unknown }).children != null) {
+            throw new Error("nav_depth_exceeded");
+          }
+        }
+      }
+    }
+  }
+  assertNavDepthMax1(NAV);
+
+  let sidebarCollapsed = $state(false);
+  let navOpenByKey = $state<Record<string, boolean>>({ usage: true, policies: true, resilience: true });
+
+  const pathname = $derived($page.url.pathname);
+
+  function isActive(href: string) {
+    if (href === "/") return pathname === "/";
+    if (pathname === href) return true;
+    return pathname.startsWith(href + "/");
+  }
+
+  function groupPrefixForHref(href: string) {
+    const seg = href.split("/")[1] ?? "";
+    return seg ? `/${seg}` : "/";
+  }
+
+  function isGroupActive(prefix: string) {
+    if (prefix === "/") return pathname === "/";
+    if (pathname === prefix) return true;
+    return pathname.startsWith(prefix + "/");
+  }
+
+  function closeHelp(event: MouseEvent) {
+    event.preventDefault();
+    const el = event.currentTarget as HTMLElement | null;
+    const details = el?.closest("details") as HTMLDetailsElement | null;
+    if (details) details.open = false;
+  }
+
+  let { children } = $props();
+</script>
+
+<div class="min-h-screen bg-slate-950 text-slate-50">
+  <div class="flex min-h-screen">
+    <aside
+      class={[
+        "flex flex-col border-r border-slate-800 bg-slate-950",
+        sidebarCollapsed ? "w-14" : "w-64",
+      ].join(" ")}
+    >
+      <div class="flex h-14 items-center gap-2 px-3">
+        <div class="flex min-w-0 flex-1 items-center gap-2">
+          <div class="grid h-9 w-9 place-items-center rounded-md bg-slate-900 text-sm font-semibold">M</div>
+          {#if !sidebarCollapsed}
+            <div class="min-w-0 truncate text-sm font-semibold">MCP Synapse</div>
+          {/if}
+        </div>
+        <button
+          type="button"
+          class="grid h-9 w-9 place-items-center rounded-md border border-slate-800 bg-slate-950 text-xs text-slate-200 hover:bg-slate-900"
+          onclick={() => (sidebarCollapsed = !sidebarCollapsed)}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {#if sidebarCollapsed}
+            &gt;
+          {:else}
+            &lt;
+          {/if}
+        </button>
+      </div>
+
+      <nav class="px-2 pt-2">
+        <div class="space-y-1">
+          {#each NAV as item (item.key)}
+            {#if "children" in item}
+              <div>
+                <div class="flex items-center gap-1">
+                  <a
+                    href={item.href}
+                    class={[
+                      "flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-2 text-sm",
+                      isGroupActive(groupPrefixForHref(item.href))
+                        ? "bg-slate-900 text-slate-50"
+                        : "text-slate-300 hover:bg-slate-900/60",
+                    ].join(" ")}
+                    title={sidebarCollapsed ? item.label : undefined}
+                  >
+                    <span class="grid h-6 w-6 place-items-center rounded bg-slate-900/40 text-xs">{item.icon}</span>
+                    {#if !sidebarCollapsed}
+                      <span class="truncate">{item.label}</span>
+                    {/if}
+                  </a>
+                  {#if !sidebarCollapsed}
+                    <button
+                      type="button"
+                      class="grid h-9 w-9 place-items-center rounded-md border border-slate-800 bg-slate-950 text-xs text-slate-200 hover:bg-slate-900"
+                      onclick={() => (navOpenByKey = { ...navOpenByKey, [item.key]: !(navOpenByKey[item.key] ?? true) })}
+                      aria-label={(navOpenByKey[item.key] ?? true) ? `Collapse ${item.label}` : `Expand ${item.label}`}
+                    >
+                      {#if navOpenByKey[item.key] ?? true}
+                        –
+                      {:else}
+                        +
+                      {/if}
+                    </button>
+                  {/if}
+                </div>
+
+                {#if !sidebarCollapsed && (navOpenByKey[item.key] ?? true)}
+                  <div class="mt-1 space-y-1 pl-4">
+                    {#each item.children as child (child.key)}
+                      <a
+                        href={child.href}
+                        class={[
+                          "flex items-center gap-3 rounded-md px-2 py-2 text-sm",
+                          isActive(child.href)
+                            ? "bg-slate-900 text-slate-50"
+                            : "text-slate-300 hover:bg-slate-900/60",
+                        ].join(" ")}
+                      >
+                        <span class="grid h-6 w-6 place-items-center rounded bg-slate-900/40 text-xs">{child.icon}</span>
+                        <span class="truncate">{child.label}</span>
+                      </a>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {:else}
+              <a
+                href={item.href}
+                class={[
+                  "flex min-w-0 items-center gap-3 rounded-md px-2 py-2 text-sm",
+                  isActive(item.href) ? "bg-slate-900 text-slate-50" : "text-slate-300 hover:bg-slate-900/60",
+                ].join(" ")}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <span class="grid h-6 w-6 place-items-center rounded bg-slate-900/40 text-xs">{item.icon}</span>
+                {#if !sidebarCollapsed}
+                  <span class="truncate">{item.label}</span>
+                {/if}
+              </a>
+            {/if}
+          {/each}
+        </div>
+      </nav>
+
+      <div class="mt-auto px-2 pb-3">
+        <div class="border-t border-slate-800 pt-3">
+          <a
+            href={SETTINGS.href}
+            class={[
+              "flex min-w-0 items-center gap-3 rounded-md px-2 py-2 text-sm",
+              isActive(SETTINGS.href) ? "bg-slate-900 text-slate-50" : "text-slate-300 hover:bg-slate-900/60",
+            ].join(" ")}
+            title={sidebarCollapsed ? SETTINGS.label : undefined}
+            data-testid="settings-bottom"
+          >
+            <span class="grid h-6 w-6 place-items-center rounded bg-slate-900/40 text-xs">{SETTINGS.icon}</span>
+            {#if !sidebarCollapsed}
+              <span class="truncate">{SETTINGS.label}</span>
+            {/if}
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <header class="flex h-14 items-center border-b border-slate-800 bg-slate-950">
+        <div class="flex w-full items-center justify-between gap-4 px-4">
+          <div class="min-w-0 truncate text-sm font-semibold">P4 UI</div>
+          <div class="flex items-center gap-3">
+            <details class="relative">
+              <summary
+                class="cursor-pointer list-none rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 hover:bg-slate-900"
+              >
+                Help
+              </summary>
+              <div
+                class="absolute right-0 mt-2 w-44 overflow-hidden rounded-md border border-slate-800 bg-slate-950 text-xs text-slate-200 shadow"
+              >
+                <button type="button" class="block w-full px-3 py-2 text-left hover:bg-slate-900" onclick={closeHelp}>
+                  Docs (placeholder)
+                </button>
+                <button type="button" class="block w-full px-3 py-2 text-left hover:bg-slate-900" onclick={closeHelp}>
+                  Feedback (placeholder)
+                </button>
+                <button type="button" class="block w-full px-3 py-2 text-left hover:bg-slate-900" onclick={closeHelp}>
+                  About (placeholder)
+                </button>
+              </div>
+            </details>
+            <div class="text-xs text-slate-400">Ready</div>
+          </div>
+        </div>
+      </header>
+
+      <main class="min-w-0 flex-1 px-6 py-6">
+        {@render children?.()}
+      </main>
+      <footer class="border-t border-slate-800 bg-slate-950 px-6 py-4 text-xs text-slate-400">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap gap-3">
+            <button type="button" class="hover:text-slate-200">Docs</button>
+            <button type="button" class="hover:text-slate-200">Feedback</button>
+            <button type="button" class="hover:text-slate-200">About</button>
+          </div>
+          <div>Footer placeholder</div>
+        </div>
+      </footer>
+    </div>
+  </div>
+</div>

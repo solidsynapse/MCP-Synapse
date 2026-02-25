@@ -1,0 +1,3 @@
+﻿MISSING  docs\DECISIONS.md
+MISSING  docs\STATUS.md
+MISSING  docs\TASKS.md

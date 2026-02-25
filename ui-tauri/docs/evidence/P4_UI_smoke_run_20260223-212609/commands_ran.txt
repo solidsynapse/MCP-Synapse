@@ -1,0 +1,4 @@
+﻿COMMAND=UI smoke run (Start-Process npm dev + HTTP probe) (PS5.1)
+REPO_ROOT=C:\mcp-router\ui-tauri
+UI_ROOT=C:\mcp-router\ui-tauri\ui-tauri
+EVIDENCE_ROOT=docs\evidence\P4_UI_smoke_run_20260223-212609

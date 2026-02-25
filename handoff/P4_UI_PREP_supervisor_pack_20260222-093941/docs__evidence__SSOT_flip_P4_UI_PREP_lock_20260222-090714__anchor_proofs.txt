@@ -1,0 +1,73 @@
+﻿=== DECISIONS.md anchors (D-024 + D-029) ===
+>   401 - UI is a thin shell and may only be built as the final MVP step:
+>   402   - UI must not contain provider calls or core logic; it only configures + dispatches and renders status/usage.
+    403   - Any UI code changes remain out of scope for Phase 2 per D-019.
+    404 - Phase 2 scope is locked to: Deterministic Core Engine + MCP protocol compliance + Headless MVP verification.
+>   468 ## D-024 — Phase 3 scope + exit criteria + gates (UI thin shell)
+    469 
+    470 - Date: 2026-02-21
+>   476   - dispatch requests to the headless/core surface
+    477   - render status + usage views (read-only; export/clear actions must call core services, not providers)
+    478 
+>   490 - UI “thin shell boundary” is proven via evidence:
+    491   - grep_proofs show provider client calls are absent from UI production path
+>   492   - dispatch chain points to headless/core execution surfaces
+    493 - All Phase 3 tasks in TASKS/STATUS have evidence roots and are marked DONE with anchor proof (+ pytest when applicable).
+    494 
+>   505   - UI remains thin shell; any “warning display” is render-only; no provider calls.
+    506 - Exit proof (when implemented):
+    507   - Headless evidence shows thresholds are computed deterministically from stored usage rows.
+>   544   - P3.PR3.I1 remains BLOCKED without BYOK key; no provider/network calls are permitted while blocked.
+    545 - P4 transition still requires “Phase 3 sealed”.
+    546 
+>   547 ## D-029 — Phase 4 UI Prep Architecture Lock (Thin Shell)
+    548 
+    549 - Date: 2026-02-22
+>   550 - Decision: UI rewrite preparation is Phase 4 work (P4 UI PREP), not Phase 3.
+    551 - Rationale: Phase 3 stabilizes core + provider contract layer + regression guardrails; UI work is surface/presentation refactor.
+    552 
+>   553 ### P4 UI PREP scope (allowed)
+>   554 1) UI remains a thin shell (inherits D-024 constraints):
+>   555    - UI may only configure + dispatch + render.
+    556    - UI production path MUST NOT call provider clients directly.
+>   557 2) UI → core dispatch boundary:
+    558    - UI MUST call exactly one core/headless entrypoint for execution (e.g., ServerManager / headless API surface).
+    559    - UI MUST NOT import or call ProviderClient/ProviderFactory/any provider client modules.
+>   560 3) Config I/O:
+    561    - UI MUST NOT read/write config files directly.
+    562    - UI MUST read/write configuration only via core services (stable API surface).
+>   563 4) State rule:
+    564    - Persistent truth (agent config, usage, status) MUST live in core/DB.
+    565    - UI may hold only ephemeral view state (loading flags, selection state, expanded/collapsed, etc.).
+>   568    - A ViewModel/Controller-like layer is REQUIRED for UI logic organization (MVVM-like is acceptable; exact framework choice is non-normative).
+    569 
+>   570 ### P4 UI PREP scope (forbidden)
+    571 - No visual redesign/UX expansion beyond minimal functional UI required to prove the architecture boundary.
+    572 - No streaming.
+>   577 ### P4 UI PREP implementation gate (deterministic)
+>   578 P4 UI PREP is ALLOWED when:
+    579 - Phase 3 core/provider-contract baseline is stable enough to proceed (pytest green + no-new-P3-ID drift gates remain enforced), AND
+>   580 - P3.PR3.I1 may remain BLOCKED (BYOK required); this blocks only online OpenAI feasibility, not UI work, AND
+    581 - P3.LG1 is post-technical documentation closeout (not a blocker for UI prep).
+    582 
+>   583 ### Evidence (required for P4 UI PREP work)
+    584 - Evidence root: docs/evidence/<id_timestamp>/
+    585 - Required: commands_ran.txt, changed_files.txt, rollback.txt, pytest.txt, pytest_exit_code.txt, anchor_proofs.txt
+=== STATUS.md anchors (roadmap + PR3.I1) ===
+>   333 - Result: BLOCKED (BYOK key required; no key provided in SSOT)
+    334 ## P3.BE4 — Headless backend smoke (pre-UI rewrite)
+    335 - Evidence: docs\evidence\G_P3_headless_backend_smoke_<timestamp>\
+>   376 ## P3.LG1 — Final legal documentation pack (post-technical; docs-only)
+    377 - Evidence: docs\evidence\G_P3_legal_pack_<timestamp>\
+    378 - Result: TBD
+>   391 ## P3.PR3.I1 — OpenAI online feasibility smoke
+>   392 Result: BLOCKED (BYOK key not provided; network calls disallowed by gate)
+    393 ## P3.PR3 — Offline fake-provider proof (no network; high-confidence core test)
+    394 - Evidence: docs\evidence\G_P3_openai_offline_fake_provider_<timestamp>\
+>   417 ## Phase 3 Roadmap (Next)
+    418 - 1) PR7.I1 LM Studio feasibility → PASS required before enabling LM Studio
+    419 - 2) P3.P1/P3.P2/P3.P3 contract-first docs-only
+>   421 - 4) Phase 4 UI PREP (architecture-first; thin shell; see D-029)
+>   422 - 5) Documentation closeout (post-UI): P3.LG1 + User Guide
+    423 
+    424 ## P3.P1 — Interceptor (JSON syntax repair) (contract-first; docs-only)

@@ -1,0 +1,1 @@
+﻿ROLLBACK=Remove-Item -Recurse -Force "C:\mcp-router\handoff\P4_UI_PREP_supervisor_pack_20260222-093941"

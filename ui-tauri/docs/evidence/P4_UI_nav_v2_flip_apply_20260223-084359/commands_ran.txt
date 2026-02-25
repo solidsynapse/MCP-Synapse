@@ -1,0 +1,4 @@
+﻿COMMAND=FLIP SSOT (DECISIONS D-029): Navigation IA v2 + dashboard + labels (PS5.1)
+REPO_ROOT=C:\mcp-router\ui-tauri
+EVIDENCE_ROOT=docs\evidence\P4_UI_nav_v2_flip_apply_20260223-084359
+NO_NEW_IDS=1

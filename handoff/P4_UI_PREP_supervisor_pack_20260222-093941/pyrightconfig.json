@@ -1,0 +1,14 @@
+{
+  "typeCheckingMode": "basic",
+  "exclude": [
+    "**/venv/**",
+    "**/.venv/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/.pytest_cache/**",
+    "**/__pycache__/**",
+    "docs/evidence/**",
+    ".git/**",
+    ".vscode/**"
+  ]
+}

@@ -1,0 +1,5 @@
+﻿COMMAND=verify P4_UI_IMPL_3 (hard-ban=0 + bridges route + dispatch cmd anchor) (PS5.1; exclude node_modules)
+REPO_ROOT=C:\mcp-router\ui-tauri
+EVIDENCE_ROOT=docs\evidence\P4_UI_IMPL_3_verify_20260223-025457
+UI_ROOT=ui-tauri
+REQUIRED_RUST_CMD=dispatch_execute_request_v1

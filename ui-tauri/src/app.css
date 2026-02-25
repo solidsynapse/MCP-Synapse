@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Base Colors */
+  --bg-base: #0e1116;
+  --surface-1: #161b22;
+  --surface-2: #21262d;
+  --border-subtle: rgba(240, 246, 252, 0.1);
+  --text-primary: #f0f6fc;
+  --text-muted: rgba(240, 246, 252, 0.6);
+
+  /* Accent */
+  --accent-base: #27c9a9; /* Teal */
+  --accent-dim: rgba(39, 201, 169, 0.1);
+  --accent-glow: rgba(39, 201, 169, 0.15);
+
+  /* Legacy aliases (do not use in new code) */
+  --accent: var(--accent-base);
+  --accent-color: var(--accent-base);
+  --color-accent: var(--accent-base);
+  --color-accent-teal: var(--accent-base);
+  --accent-primary: var(--accent-base);
+  --accent-cyan: var(--accent-base);
+
+  /* Radii */
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-badge: 999px;
+
+  /* Spacing */
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.15);
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Utility classes for design tokens if needed, or just use style attributes/custom classes */
+.bg-surface-1 { background-color: var(--surface-1); }
+.bg-surface-2 { background-color: var(--surface-2); }
+.border-subtle { border-color: var(--border-subtle); }
+.text-muted { color: var(--text-muted); }
+.text-primary { color: var(--text-primary); }
+
+/* Scrollbar polish */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #30363d;
+}
+
+/* ===== UI Primitives (Dashboard Design Language) ===== */
+.ui-card {
+  background-color: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-1);
+}
+
+.card {
+  background-color: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-1);
+}
+
+.ui-card--glow {
+  background-image: radial-gradient(120% 120% at 30% 0%, var(--accent-glow) 0%, transparent 55%);
+}
+
+.ui-pad-sm { padding: var(--space-1); }
+.ui-pad-md { padding: var(--space-3); }
+.ui-pad-lg { padding: var(--space-4); }
+
+.ui-title {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.ui-subtitle {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-container {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-row-hover:hover {
+  background-color: rgba(240, 246, 252, 0.05);
+}
+
+.table-row:hover {
+  background-color: rgba(240, 246, 252, 0.05);
+}
+
+.ui-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-badge);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.ui-focus:focus-visible {
+  outline: 2px solid var(--accent-base);
+  outline-offset: 2px;
+}

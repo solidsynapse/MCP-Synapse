@@ -1,0 +1,40 @@
+﻿ROOT=C:\mcp-router
+DEPTH=5
+EXCLUDE_DIRS=venv,.venv,build,dist,.git,.pytest_cache,__pycache__,.mypy_cache,.ruff_cache,.idea,.vscode,.trae,node_modules
+EXCLUDE_PATH_CONTAINS=\docs\evidence\,\docs\archive\,\docs\old\
+
+=== TOP SUMMARY ===
+DIR .pytest_cache | files=5 | bytes=10839
+DIR .trae | files=1 | bytes=323
+DIR .vscode | files=1 | bytes=114
+DIR build | files=14 | bytes=162810521
+DIR data | files=18 | bytes=33581
+DIR dist | files=1 | bytes=119323642
+DIR docs | files=28294 | bytes=93680000
+DIR src | files=86 | bytes=512529
+DIR tests | files=30 | bytes=250565
+DIR tools | files=16 | bytes=68950
+DIR venv | files=19154 | bytes=446595067
+FILE build.py | bytes=559
+FILE check_models.py | bytes=1922
+FILE fix_dummy_json.py | bytes=263
+FILE key.json | bytes=2387
+FILE MASTERPLAN_V2__aligned.md | bytes=9724
+FILE MCP Router.spec | bytes=816
+FILE mcp_5003_trace.txt | bytes=69272
+FILE mcp_sse_stream.txt | bytes=1784
+FILE pyrightconfig.json | bytes=237
+FILE pytest.ini | bytes=91
+FILE repo_focus_recent.txt | bytes=24783
+FILE requirements.txt | bytes=144
+FILE requirements.txt.bak-20260215-111612 | bytes=132
+FILE smoke_tests.ps1 | bytes=701
+FILE tmp_v1_observer_probe.out.txt | bytes=108
+FILE tmp_v1_observer_probe.py | bytes=1519
+FILE tmp_v1_probe.py | bytes=1843
+FILE tmp_v1_usage_probe.out.txt | bytes=10494
+FILE tmp_v1_usage_probe.py | bytes=1309
+FILE usage_2026-02-12_22-07-50.csv | bytes=1877
+FILE USER_GUIDE.md | bytes=5315
+
+=== TREE ===

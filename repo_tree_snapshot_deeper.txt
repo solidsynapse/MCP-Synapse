@@ -1,0 +1,125 @@
+﻿ROOT=C:\mcp-router
+DEPTH=8
+EXCLUDE_DIRS=venv,.venv,build,dist,.git,.pytest_cache,__pycache__,.mypy_cache,.ruff_cache,.idea,.vscode,.trae,node_modules
+EXCLUDE_PATH_CONTAINS=\docs\archive\,\docs\old\
+
+=== TOP SUMMARY ===
+DIR .pytest_cache | files=5 | bytes=10839
+DIR .trae | files=1 | bytes=323
+DIR .vscode | files=1 | bytes=114
+DIR build | files=14 | bytes=162810521
+DIR data | files=18 | bytes=33581
+DIR dist | files=1 | bytes=119323642
+DIR docs | files=28294 | bytes=93680000
+DIR src | files=86 | bytes=512529
+DIR tests | files=30 | bytes=250565
+DIR tools | files=16 | bytes=68950
+DIR venv | files=19154 | bytes=446595067
+FILE build.py | bytes=559
+FILE check_models.py | bytes=1922
+FILE fix_dummy_json.py | bytes=263
+FILE key.json | bytes=2387
+FILE MASTERPLAN_V2__aligned.md | bytes=9724
+FILE MCP Router.spec | bytes=816
+FILE mcp_5003_trace.txt | bytes=69272
+FILE mcp_sse_stream.txt | bytes=1784
+FILE pyrightconfig.json | bytes=237
+FILE pytest.ini | bytes=91
+FILE repo_focus_recent.txt | bytes=24783
+FILE repo_tree_snapshot.txt | bytes=1485
+FILE requirements.txt | bytes=144
+FILE requirements.txt.bak-20260215-111612 | bytes=132
+FILE smoke_tests.ps1 | bytes=701
+FILE tmp_v1_observer_probe.out.txt | bytes=108
+FILE tmp_v1_observer_probe.py | bytes=1519
+FILE tmp_v1_probe.py | bytes=1843
+FILE tmp_v1_usage_probe.out.txt | bytes=10494
+FILE tmp_v1_usage_probe.py | bytes=1309
+FILE usage_2026-02-12_22-07-50.csv | bytes=1877
+FILE USER_GUIDE.md | bytes=5315
+
+=== EVIDENCE SUMMARY (docs\\evidence\\*) ===
+EVIDENCE_DIRS=276
+EV D004_fix_G2_20260219-045701 | files=5 | bytes=4980
+EV D004_fix_G2_20260219-055144 | files=9 | bytes=25665
+EV D004_fix_G3_20260219-051553 | files=5 | bytes=2424
+EV D004_fix_G3_20260219-055508 | files=5 | bytes=23827
+EV D004_fix_M1_20260219-042346 | files=5 | bytes=2590
+EV D004_fix_M2_20260219-044434 | files=5 | bytes=2661
+EV D004_phase2_prompt_estimate_20260219-044516 | files=1 | bytes=2089
+EV D004_verify_20260219-040534 | files=20 | bytes=84260
+EV D004_verify_20260219-050337 | files=81 | bytes=1211415
+EV D004_verify_20260219-051612 | files=11 | bytes=36774
+EV G_D019_add_ui_thin_shell_principle_20260220-091050 | files=1 | bytes=23596
+EV G_D019_add_ui_thin_shell_principle_20260220-091201 | files=6 | bytes=24205
+EV G_D019_flipssot_proof_20260220-035810 | files=9 | bytes=3474
+EV G_D020_cleanup_20260220-042429 | files=2 | bytes=44317
+EV G_D020_dedupe_20260220-042602 | files=1 | bytes=22128
+EV G_D020_evidence_generation_flip_20260220-041926 | files=10 | bytes=8019
+EV G_D021_add_cleanup_policy_20260220-054424 | files=4 | bytes=44794
+EV G_D022_add_legacy_retirement_policy_20260220-055132 | files=4 | bytes=46272
+EV G_D023_rename_masterplan_ref_20260220-223029 | files=6 | bytes=49777
+EV G_D024_phase3_scope_20260221-002654 | files=7 | bytes=51279
+EV G_D025_budget_guard_monitor_only_20260221-040952 | files=7 | bytes=55224
+EV G_D026_compliance_baseline_20260221-060138 | files=7 | bytes=57541
+EV G_D0XX_masterplan_reference_only_20260220-221950 | files=5 | bytes=49020
+EV G_masterplan_add_roadmap_20260221-093524 | files=7 | bytes=19680
+EV G_masterplan_replace_notes_20260221-074526 | files=7 | bytes=18095
+EV G_masterplan_sync_20260221_20260221-074113 | files=7 | bytes=18200
+EV G_mcp_tools_debug | files=1 | bytes=3042
+EV G_MVP1_mark_done_20260220-064829 | files=5 | bytes=26791
+EV G_P2_pivot_and_tool_discovery_gate_20260220-035300 | files=5 | bytes=9359
+EV G_P2_pytest_and_determinism_20260220-051113 | files=4 | bytes=211
+EV G_P3_backend_health_20260221-014056 | files=7 | bytes=4652
+EV G_P3_backend_health_fix_importerror_20260221-014205 | files=7 | bytes=64836
+EV G_P3_backend_health_runner_20260221-034059 | files=8 | bytes=746
+EV G_P3_backend_health_runner_20260221-034604 | files=8 | bytes=746
+EV G_P3_backend_health_runner_20260221-034734 | files=8 | bytes=746
+EV G_P3_backend_regression_guardrails_20260221-024019 | files=13 | bytes=1145
+EV G_P3_budget_guard_monitor_20260221-050550 | files=7 | bytes=1494
+EV G_P3_budget_guard_monitor_20260221-051141 | files=5 | bytes=4450
+EV G_P3_budget_guard_monitor_20260221-051236 | files=7 | bytes=1494
+EV G_P3_budget_guard_monitor_20260221-051302 | files=1 | bytes=77
+EV G_P3_budget_guard_monitor_20260221-051438 | files=2 | bytes=128
+EV G_P3_budget_guard_monitor_20260221-051533 | files=7 | bytes=1494
+EV G_P3_copy_config_contract_20260221-041815 | files=4 | bytes=672
+EV G_P3_copy_config_contract_20260221-041951 | files=4 | bytes=672
+EV G_P3_copy_config_contract_20260221-042027 | files=7 | bytes=1064
+EV G_P3_copy_config_contract_20260221-042443 | files=14 | bytes=1906
+EV G_P3_copy_config_contract_20260221-042830 | files=7 | bytes=1151
+EV G_P3_copy_config_contract_20260221-061317 | files=8 | bytes=723
+EV G_P3_copy_config_contract_20260221-061502 | files=3 | bytes=173
+EV G_P3_core_provider_specific_violation_20260221-024237 | files=2 | bytes=451
+EV G_P3_csv_export_headless_20260221-044700 | files=6 | bytes=998
+EV G_P3_csv_export_headless_20260221-044748 | files=7 | bytes=1130
+EV G_P3_csv_export_headless_20260221-045258 | files=7 | bytes=1046
+EV G_P3_csv_export_headless_20260221-045608 | files=7 | bytes=883
+EV G_P3_csv_export_headless_20260221-045807 | files=11 | bytes=1811
+EV G_P3_F1_contract_copy_config_20260221-041232 | files=5 | bytes=33876
+EV G_P3_headless_backend_smoke_20260221-035214 | files=4 | bytes=177
+EV G_P3_headless_backend_smoke_20260221-035252 | files=4 | bytes=1404
+EV G_P3_headless_backend_smoke_20260221-035342 | files=4 | bytes=1431
+EV G_P3_headless_backend_smoke_20260221-035417 | files=7 | bytes=4229
+EV G_P3_headless_backend_smoke_20260221-035450 | files=4 | bytes=1423
+EV G_P3_headless_backend_smoke_20260221-035548 | files=9 | bytes=4143
+EV G_P3_lmstudio_feasibility_20260221-093537 | files=8 | bytes=1236
+EV G_P3_lmstudio_feasibility_20260221-093857 | files=8 | bytes=1236
+EV G_P3_lmstudio_feasibility_20260221-103631 | files=8 | bytes=1236
+EV G_P3_lmstudio_feasibility_20260221-104353 | files=8 | bytes=1236
+EV G_P3_lmstudio_feasibility_20260221-105313 | files=8 | bytes=1417
+EV G_P3_lmstudio_feasibility_20260221-105642 | files=8 | bytes=1174
+EV G_P3_lmstudio_feasibility_20260221-105825 | files=8 | bytes=1178
+EV G_P3_lmstudio_feasibility_20260221-110359 | files=8 | bytes=1178
+EV G_P3_lmstudio_feasibility_20260221-110925 | files=5 | bytes=725
+EV G_P3_lmstudio_feasibility_20260221-111048 | files=5 | bytes=725
+EV G_P3_lmstudio_feasibility_20260221-210709 | files=8 | bytes=1178
+EV G_P3_lmstudio_feasibility_20260221-211148 | files=5 | bytes=725
+EV G_P3_lmstudio_feasibility_20260221-211413 | files=5 | bytes=725
+EV G_P3_lmstudio_feasibility_20260221-211700 | files=4 | bytes=717
+EV G_P3_lmstudio_feasibility_20260221-233131 | files=8 | bytes=1143
+EV G_P3_lmstudio_feasibility_20260222-001041 | files=8 | bytes=1143
+EV G_P3_masterplan_vs_ssot_map_20260221-040525 | files=22 | bytes=29060
+EV G_P3_ollama_feasibility_20260221-062833 | files=8 | bytes=1302
+EV ... truncated (+196 more dirs)
+
+=== TREE ===

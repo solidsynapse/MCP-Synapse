@@ -1,0 +1,15 @@
+{
+  "agents": [
+    {
+      "id": "6b741165-93de-40e3-9f5d-f1140b75c3e6",
+      "name": "Vertex0",
+      "project_id": "tensile-cogency-483219-q5",
+      "location": "us-central1",
+      "model_id": "gemini-2.0-flash-001",
+      "price_per_1m_input": 0.0,
+      "price_per_1m_output": 0.0,
+      "port": 5000,
+      "status": "stopped"
+    }
+  ]
+}

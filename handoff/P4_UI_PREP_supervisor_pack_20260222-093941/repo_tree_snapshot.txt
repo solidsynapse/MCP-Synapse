@@ -1,0 +1,278 @@
+﻿TREE_ROOT=C:\mcp-router
+TREE_MAX_DEPTH=4
+EXCLUDE=.git,venv,__pycache__,dist,build,.pytest_cache,.mypy_cache,.ruff_cache,node_modules,docs\evidence,handoff,snapshot_pack_
+
+[D] .trae
+  [F] .trae\.ignore
+[D] .vscode
+  [F] .vscode\settings.json
+[D] data
+  [D] data\credentials
+  [D] data\exports
+    [F] data\exports\usage_2026-02-12_235627.csv
+    [F] data\exports\usage_2026-02-13_043206.csv
+    [F] data\exports\usage_2026-02-13_052001.csv
+    [F] data\exports\usage_2026-02-13_052005.csv
+    [F] data\exports\usage_2026-02-13_063711.csv
+    [F] data\exports\usage_2026-02-13_063917.csv
+    [F] data\exports\usage_2026-02-13_065050.csv
+    [F] data\exports\usage_2026-02-13_233626.csv
+    [F] data\exports\usage_2026-02-14_064810.csv
+    [F] data\exports\usage_2026-02-18_052819.csv
+    [F] data\exports\usage_2026-02-18_070229.csv
+    [F] data\exports\usage_2026-02-18_071027.csv
+    [F] data\exports\usage_2026-02-19_032430.csv
+    [F] data\exports\usage_2026-02-20_055251.csv
+  [F] data\.gitkeep
+  [F] data\config.json
+  [F] data\phase2-credential.json
+  [F] data\usage.db
+[D] docs
+  [D] docs\_agent_contract_backups
+    [D] docs\_agent_contract_backups\20260216-233837
+      [F] docs\_agent_contract_backups\20260216-233837\00_PROTOCOL.md
+      [F] docs\_agent_contract_backups\20260216-233837\10_BUILDER.md
+      [F] docs\_agent_contract_backups\20260216-233837\20_VERIFIER.md
+      [F] docs\_agent_contract_backups\20260216-233837\30_DEBUGGER.md
+  [D] docs\agents
+    [F] docs\agents\00_PROTOCOL.md
+    [F] docs\agents\05_SOLO_CODER.md
+    [F] docs\agents\10_BUILDER.md
+    [F] docs\agents\20_VERIFIER.md
+    [F] docs\agents\30_DEBUGGER.md
+  [D] docs\archive
+    [D] docs\archive\architecture
+      [F] docs\archive\architecture\pipeline-v1.md
+  [F] docs\00_PROTOCOL.md
+  [F] docs\05_SOLO_CODER.md
+  [F] docs\10_BUILDER.md
+  [F] docs\20_VERIFIER.md
+  [F] docs\30_DEBUGGER.md
+  [F] docs\ARCHITECTURE_EVOLUTION_LOG.md
+  [F] docs\ARCHITECTURE_LOG.md
+  [F] docs\AZURE_PROVISIONING_PHASE1_5.md
+  [F] docs\DECISIONS.md
+  [F] docs\LOG_2026-02-15_G1_SSOT_drift_cleanup_alignment_PASS.md
+  [F] docs\MASTER_PLAN.md
+  [F] docs\MCP_Router_Master_Plan.md
+  [F] docs\P3.P1_interceptor_contract.md
+  [F] docs\PLAN.md
+  [F] docs\STATUS.md
+  [F] docs\TASKS.md
+[D] src
+  [D] src\__pycache__
+    [F] src\__pycache__\__init__.cpython-311.pyc
+  [D] src\config
+    [D] src\config\__pycache__
+      [F] src\config\__pycache__\__init__.cpython-311.pyc
+      [F] src\config\__pycache__\manager.cpython-311.pyc
+    [F] src\config\__init__.py
+    [F] src\config\manager.py
+    [F] src\config\manager.py.bak-20260218-084020
+  [D] src\data
+    [D] src\data\__pycache__
+      [F] src\data\__pycache__\__init__.cpython-311.pyc
+      [F] src\data\__pycache__\budget_guard_report.cpython-311.pyc
+      [F] src\data\__pycache__\credentials.cpython-311.pyc
+      [F] src\data\__pycache__\usage_db.cpython-311.pyc
+      [F] src\data\__pycache__\usage_export.cpython-311.pyc
+      [F] src\data\__pycache__\usage_export_service.cpython-311.pyc
+      [F] src\data\__pycache__\usage_status.cpython-311.pyc
+    [F] src\data\__init__.py
+    [F] src\data\budget_guard_report.py
+    [F] src\data\credentials.py
+    [F] src\data\usage_db.py
+    [F] src\data\usage_export.py
+    [F] src\data\usage_export_service.py
+    [F] src\data\usage_status.py
+  [D] src\mcp_server
+    [D] src\mcp_server\__pycache__
+      [F] src\mcp_server\__pycache__\__init__.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\agent_server.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\context_cache_p3_p3.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\copy_config_p3_f1.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\interceptor_p3_p1.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\manager.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\persona_lite_p3_p2.cpython-311.pyc
+      [F] src\mcp_server\__pycache__\pipeline_v1.cpython-311.pyc
+    [F] src\mcp_server\__init__.py
+    [F] src\mcp_server\agent_server.py
+    [F] src\mcp_server\context_cache_p3_p3.py
+    [F] src\mcp_server\copy_config_p3_f1.py
+    [F] src\mcp_server\interceptor_p3_p1.py
+    [F] src\mcp_server\manager.py
+    [F] src\mcp_server\persona_lite_p3_p2.py
+    [F] src\mcp_server\pipeline_v1.py
+  [D] src\providers
+    [D] src\providers\__pycache__
+      [F] src\providers\__pycache__\__init__.cpython-311.pyc
+      [F] src\providers\__pycache__\anthropic_contract_pr4.cpython-311.pyc
+      [F] src\providers\__pycache__\azure_openai_client.cpython-311.pyc
+      [F] src\providers\__pycache__\base.cpython-311.pyc
+      [F] src\providers\__pycache__\bedrock_client.cpython-311.pyc
+      [F] src\providers\__pycache__\factory.cpython-311.pyc
+      [F] src\providers\__pycache__\groq_contract_pr5.cpython-311.pyc
+      [F] src\providers\__pycache__\huggingface_client.cpython-311.pyc
+      [F] src\providers\__pycache__\lmstudio_contract_pr7.cpython-311.pyc
+      [F] src\providers\__pycache__\ollama_client.cpython-311.pyc
+      [F] src\providers\__pycache__\ollama_contract_pr2.cpython-311.pyc
+      [F] src\providers\__pycache__\openai_client.cpython-311.pyc
+      [F] src\providers\__pycache__\openai_contract_pr3.cpython-311.pyc
+      [F] src\providers\__pycache__\vertex_client.cpython-311.pyc
+    [F] src\providers\__init__.py
+    [F] src\providers\anthropic_contract_pr4.py
+    [F] src\providers\azure_openai_client.py
+    [F] src\providers\base.py
+    [F] src\providers\bedrock_client.py
+    [F] src\providers\bedrock_client.py.bak-20260218-053721
+    [F] src\providers\factory.py
+    [F] src\providers\groq_contract_pr5.py
+    [F] src\providers\huggingface_client.py
+    [F] src\providers\huggingface_client.py.bak-20260218-060300
+    [F] src\providers\huggingface_client.py.bak-fix-20260218-060521
+    [F] src\providers\lmstudio_contract_pr7.py
+    [F] src\providers\ollama_client.py
+    [F] src\providers\ollama_contract_pr2.py
+    [F] src\providers\openai_client.py
+    [F] src\providers\openai_contract_pr3.py
+    [F] src\providers\vertex_client.py
+  [D] src\tests
+    [D] src\tests\__pycache__
+      [F] src\tests\__pycache__\__init__.cpython-311.pyc
+      [F] src\tests\__pycache__\mcp_sse_probe.cpython-311.pyc
+      [F] src\tests\__pycache__\test_core_provider_agnostic_strings.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_d004_g2_error_type_and_test_traffic.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_d004_g3_csv_export.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_d004_status_mapping_m2.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_d004_usage_db_contract.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_g4_usage_filters.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_mvp1_release_gate.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_f1_copy_config_contract.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_p1_interceptor_json_repair.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_p2_persona_lite_contract.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_p3_context_caching_contract.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_pr2_ollama_contract_offline.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_pr3_openai_contract_offline.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_pr4_anthropic_contract_offline.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_pr5_groq_contract_offline.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_p3_pr7_lmstudio_contract_offline.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_phase1.cpython-311-pytest-9.0.2.pyc
+      [F] src\tests\__pycache__\test_phase2.cpython-311-pytest-9.0.2.pyc
+    [F] src\tests\__init__.py
+    [F] src\tests\mcp_sse_probe.py
+    [F] src\tests\test_core_provider_agnostic_strings.py
+    [F] src\tests\test_d004_g2_error_type_and_test_traffic.py
+    [F] src\tests\test_d004_g3_csv_export.py
+    [F] src\tests\test_d004_status_mapping_m2.py
+    [F] src\tests\test_d004_usage_db_contract.py
+    [F] src\tests\test_g4_usage_filters.py
+    [F] src\tests\test_p3_f1_copy_config_contract.py
+    [F] src\tests\test_p3_p1_interceptor_json_repair.py
+    [F] src\tests\test_p3_p2_persona_lite_contract.py
+    [F] src\tests\test_p3_p3_context_caching_contract.py
+    [F] src\tests\test_p3_pr2_ollama_contract_offline.py
+    [F] src\tests\test_p3_pr3_openai_contract_offline.py
+    [F] src\tests\test_p3_pr4_anthropic_contract_offline.py
+    [F] src\tests\test_p3_pr5_groq_contract_offline.py
+    [F] src\tests\test_p3_pr7_lmstudio_contract_offline.py
+    [F] src\tests\test_phase1.py
+    [F] src\tests\test_phase2.py
+  [D] src\ui
+    [D] src\ui\__pycache__
+      [F] src\ui\__pycache__\__init__.cpython-311.pyc
+      [F] src\ui\__pycache__\main_window.cpython-311.pyc
+      [F] src\ui\__pycache__\usage_dropdowns.cpython-311.pyc
+      [F] src\ui\__pycache__\usage_export.cpython-311.pyc
+      [F] src\ui\__pycache__\usage_filters.cpython-311.pyc
+      [F] src\ui\__pycache__\usage_kpis.cpython-311.pyc
+    [F] src\ui\__init__.py
+    [F] src\ui\main_window.py
+    [F] src\ui\usage_dropdowns.py
+    [F] src\ui\usage_export.py
+    [F] src\ui\usage_filters.py
+    [F] src\ui\usage_kpis.py
+  [D] src\vertex
+    [D] src\vertex\__pycache__
+      [F] src\vertex\__pycache__\__init__.cpython-311.pyc
+      [F] src\vertex\__pycache__\client.cpython-311.pyc
+    [F] src\vertex\__init__.py
+    [F] src\vertex\client.py
+  [F] src\__init__.py
+  [F] src\main.py
+[D] tests
+  [D] tests\__pycache__
+    [F] tests\__pycache__\test_azure_openai_provider_t15.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_bedrock_provider_t2.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_cred_path_sanitize.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_huggingface_provider_t2.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_lmstudio_probe_offline_t17.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_pipeline_v1.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_pr3_i0_offline_fake_provider.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_pr4_i0_offline_fake_provider_anthropic.cpython-311.pyc
+    [F] tests\__pycache__\test_pr4_i0_offline_fake_provider_anthropic.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_pr5_i0_offline_fake_provider_groq.cpython-311.pyc
+    [F] tests\__pycache__\test_pr5_i0_offline_fake_provider_groq.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_provider_abstraction_t15.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_provider_hardening_t15.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_stage1_pct_split.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_ui_azure_openai_config_t15.cpython-311-pytest-9.0.2.pyc
+    [F] tests\__pycache__\test_usage_metrics_t31.cpython-311-pytest-9.0.2.pyc
+  [F] tests\test_azure_openai_provider_t15.py
+  [F] tests\test_bedrock_provider_t2.py
+  [F] tests\test_cred_path_sanitize.py
+  [F] tests\test_huggingface_provider_t2.py
+  [F] tests\test_lmstudio_probe_offline_t17.py
+  [F] tests\test_pipeline_v1.py
+  [F] tests\test_pr3_i0_offline_fake_provider.py
+  [F] tests\test_pr4_i0_offline_fake_provider_anthropic.py
+  [F] tests\test_pr5_i0_offline_fake_provider_groq.py
+  [F] tests\test_provider_abstraction_t15.py
+  [F] tests\test_provider_hardening_t15.py
+  [F] tests\test_stage1_pct_split.py
+  [F] tests\test_ui_azure_openai_config_t15.py
+  [F] tests\test_usage_metrics_t31.py
+[D] tools
+  [D] tools\__pycache__
+    [F] tools\__pycache__\lmstudio_probe.cpython-311.pyc
+  [F] tools\budget_guard_report.py
+  [F] tools\copy_mcp_config.py
+  [F] tools\export_usage_csv.py
+  [F] tools\lmstudio_probe.py
+  [F] tools\ollama_probe.py
+  [F] tools\openai_probe.py
+  [F] tools\run_backend_health.ps1
+  [F] tools\run_budget_guard_monitor.ps1
+  [F] tools\run_copy_config_contract.ps1
+  [F] tools\run_csv_export_headless.ps1
+  [F] tools\run_lmstudio_feasibility.ps1
+  [F] tools\run_ollama_feasibility.ps1
+  [F] tools\run_openai_feasibility.ps1
+  [F] tools\run_openai_offline_fake_provider.ps1
+  [F] tools\run_pr4_pr5_offline_fake_provider.ps1
+[F] build.py
+[F] check_models.py
+[F] fix_dummy_json.py
+[F] HANDOFF_HASHES.txt
+[F] HANDOFF_INDEX.md
+[F] handoff_manifest.md
+[F] key.json
+[F] MASTERPLAN_V2__aligned.md
+[F] MCP Router.spec
+[F] mcp_5003_trace.txt
+[F] mcp_sse_stream.txt
+[F] p3_be3_headless_health_runner.ps1
+[F] pyrightconfig.json
+[F] pytest.ini
+[F] repo_focus_recent.txt
+[F] repo_tree_snapshot.txt
+[F] repo_tree_snapshot_deeper.txt
+[F] requirements.txt
+[F] requirements.txt.bak-20260215-111612
+[F] smoke_tests.ps1
+[F] tmp_v1_observer_probe.out.txt
+[F] tmp_v1_observer_probe.py
+[F] tmp_v1_probe.py
+[F] tmp_v1_usage_probe.out.txt
+[F] tmp_v1_usage_probe.py
+[F] usage_2026-02-12_22-07-50.csv
+[F] USER_GUIDE.md
