@@ -25,6 +25,8 @@
   - New Connection modal (provider-locked; triage PASS): docs\evidence\P4_UI_NEWCONN_MODAL_20260225-042356
   - Usage (Summary/History) UI polish (no wiring; triage PASS): docs\evidence\P4_UI_USAGE_MICROFIX_20260225-054440
   - UI final gate PASS (no wiring + hardcode triage + ui check): docs\evidence\P4_UI_FINAL_GATE_20260225-084502
+  - P5.3 UI session state PASS (UI-only): docs\evidence\P5_3_UI_SESSION_STATE_VERIFY_20260226-012544
+  - P5.2 UI→core dry_run dispatch PASS: docs\evidence\P5_WIRING_UI_DISPATCH_20260225-104400
 - Usage DB: data/usage.db + src/data/usage_db.py
 - Config: data/config.json + src/config/manager.py
 - Provider integration: src/vertex/client.py (uses Google Vertex AI)
