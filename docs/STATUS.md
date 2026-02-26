@@ -473,3 +473,5 @@ Result: BLOCKED (BYOK key not provided; network calls disallowed by gate)
 ### UI design language
 - Design language captured in docs\UI_STYLE_GUIDE.md
 - Shared primitives captured in ui-tauri\src\app.css ("UI Primitives (Dashboard Design Language)")
+
+  - P5.7 Dry-run test binding PASS (deterministic trace): docs\evidence\P5_7_DRYRUN_BIND_VERIFY_20260226-030311
