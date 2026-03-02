@@ -1,4 +1,4 @@
-# Dashboard Design Language (UI Primitives)
+﻿# Dashboard Design Language (UI Primitives)
 
 This document captures the reusable design language used on the Dashboard UI, expressed as token usage and neutral CSS primitives. It is intended for consistent UI construction without introducing new styling systems or hardcoded colors.
 
@@ -11,7 +11,7 @@ Use existing CSS variables from ui-tauri/src/app.css as the single source of tru
 - Text: --text-primary, --text-muted
 - Accent: --accent-base, --accent-dim, --accent-glow
 - Radii: --radius-card, --radius-btn, --radius-badge
-- Spacing: --space-1 … --space-5
+- Spacing: --space-1 ... --space-5
 - Shadows: --shadow-1, --shadow-2
 
 ## Token Canonical List
@@ -65,6 +65,7 @@ These classes are defined in ui-tauri/src/app.css and are intentionally minimal 
 - Hover tooltips should be lightweight and non-layout-shifting (fixed position, pointer-events-none).
 - Modals and popovers should not introduce global scrollbars; contain overflow within the component boundary.
 - Prefer deterministic layouts (explicit widths/min-widths) for dense tables at constrained viewports.
+- During P5.14 proof-first gates, new helper/coachmark tooltip systems are deferred until runtime feature-effect packages are closed.
 
 ## Do Not
 
@@ -110,3 +111,4 @@ Aliases:
   </tr>
 </table>
 ```
+

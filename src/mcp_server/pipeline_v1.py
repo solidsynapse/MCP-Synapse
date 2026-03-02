@@ -11,6 +11,7 @@ from src.data.credentials import CredentialManager
 from src.data.usage_db import UsageDatabase
 from src.providers.factory import ProviderFactory
 from src.mcp_server.context_cache_p3_p3 import assemble_context_cached_request
+from src.mcp_server.persona_lite_p3_p2 import assemble_persona_lite_request
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,12 @@ class ProviderAdapterV1:
     def execute(self, context: ExecutionContextV1, prompt: str) -> dict[str, Any]:
         request_id = str(uuid.uuid4())
         client = ProviderFactory.create(context.provider_id, context)
-        assembled = assemble_context_cached_request(context.agent, prompt)
+        cache_enabled = bool(context.agent.get("context_caching_enabled", True))
+        if cache_enabled:
+            assembled = assemble_context_cached_request(context.agent, prompt)
+        else:
+            assembled = assemble_persona_lite_request(context.agent, prompt)
+            assembled["cache_hit"] = False
         provider_prompt = str(assembled.get("provider_prompt") or "")
         start = time.perf_counter()
         try:
@@ -85,6 +91,8 @@ class ProviderAdapterV1:
                 result["request_id"] = request_id
                 result["provider"] = str(getattr(client, "provider_id", context.provider_id))
                 result["model_id"] = str(getattr(client, "model_id", context.model_id))
+                result["context_cache_enabled"] = cache_enabled
+                result["context_cache_hit"] = bool(assembled.get("cache_hit"))
             return result
         except Exception as exc:
             latency_ms = int((time.perf_counter() - start) * 1000)

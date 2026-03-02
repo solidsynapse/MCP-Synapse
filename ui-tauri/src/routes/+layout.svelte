@@ -42,7 +42,7 @@
     },
   ];
 
-  const SETTINGS: LeafItem = { key: "settings", label: "Settings", href: "/settings", icon: "⚙" };
+  const SETTINGS: LeafItem = { key: "settings", label: "Settings", href: "/settings", icon: "\u2699" };
 
   function assertNavDepthMax1(items: NavItem[]) {
     for (const item of items) {
@@ -65,14 +65,8 @@
     if (pathname === "/dashboard") return "Dashboard";
     if (pathname === "/connections") return "Connections";
     if (pathname === "/settings") return "Settings";
-    if (pathname === "/usage/summary") return "Usage / Summary";
-    if (pathname === "/usage/history") return "Usage / History";
     if (pathname.startsWith("/usage/")) return "Usage";
-    if (pathname === "/policies/persona") return "Policies / Persona Lite";
-    if (pathname === "/policies/optimizations") return "Policies / Optimizations";
     if (pathname.startsWith("/policies/")) return "Policies";
-    if (pathname === "/resilience/budget") return "Resilience / Budget Guards";
-    if (pathname === "/resilience/interceptors") return "Resilience / Interceptors";
     if (pathname.startsWith("/resilience/")) return "Resilience";
     return "MCP Synapse";
   });
@@ -115,9 +109,17 @@
   }
 
   let lastRefresh = $state(formatTime(new Date()));
+  let refreshBusy = $state(false);
 
   function triggerRefresh() {
+    refreshBusy = true;
     lastRefresh = formatTime(new Date());
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("synapse:global-refresh"));
+      window.setTimeout(() => {
+        refreshBusy = false;
+      }, 900);
+    }
   }
 
   onMount(() => {
@@ -160,12 +162,12 @@
       "
     >
       <div
-        class={`flex h-[56px] items-center justify-between border-b ${sidebarCollapsed ? "gap-2 pl-3 pr-[2px]" : "gap-3 px-4"}`}
+        class={`flex h-[56px] items-center justify-between border-b ${sidebarCollapsed ? "gap-2 px-3" : "gap-3 px-4"}`}
         style="border-color: var(--border-subtle);"
       >
-        <div class="flex min-w-0 items-center gap-3">
+        <div class="flex min-w-0 flex-1 items-center gap-3">
           <div 
-            class="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm font-semibold"
+            class="grid h-8 w-8 place-items-center rounded-md text-sm font-semibold"
             style="background: linear-gradient(135deg, var(--accent-base), #1a7f6c); color: #fff;"
           >
             M
@@ -176,7 +178,7 @@
         </div>
         <button
           type="button"
-          class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-xs hover:bg-white/5 text-slate-400"
+          class="grid h-7 w-7 place-items-center rounded-md text-xs hover:bg-white/5 text-slate-400"
           onclick={() => (sidebarCollapsed = !sidebarCollapsed)}
           aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -194,6 +196,7 @@
             {@const active = isGroupActive(groupPrefixForHref(item.href))}
             <a
               href={item.href}
+              data-sveltekit-preload-data="hover"
               class="collapsed-nav-item flex w-full items-center justify-center rounded-md py-2 transition-colors relative"
               style={active ? "background-color: var(--surface-1); color: #fff;" : "color: var(--text-muted);"}
               aria-label={item.label}
@@ -247,7 +250,7 @@
                     </svg>
                     <span class="min-w-0 truncate">{item.label}</span>
                   </span>
-                  <span class="text-[10px]">{ (navOpenByKey[item.key] ?? true) ? '–' : '+' }</span>
+                  <span class="text-[10px]">{ (navOpenByKey[item.key] ?? true) ? '-' : '+' }</span>
                 </button>
 
                 {#if navOpenByKey[item.key] ?? true}
@@ -256,6 +259,7 @@
                       {@const active = isActive(child.href)}
                       <a
                         href={child.href}
+                        data-sveltekit-preload-data="hover"
                         class="flex items-center rounded-md px-2 py-2 text-sm transition-colors relative group"
                         style={active 
                           ? "background-color: var(--surface-1); color: #fff;" 
@@ -274,6 +278,7 @@
               {@const active = isActive(item.href)}
               <a
                 href={item.href}
+                data-sveltekit-preload-data="hover"
                 class="flex min-w-0 items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors relative group mb-1"
                 style={active 
                   ? "background-color: var(--surface-1); color: #fff;" 
@@ -308,6 +313,7 @@
         <div class="border-t pt-3" style="border-color: var(--border-subtle);">
           <a
             href={SETTINGS.href}
+            data-sveltekit-preload-data="hover"
             class={`flex w-full rounded-md text-sm transition-colors relative group ${sidebarCollapsed ? "collapsed-nav-item items-center justify-center px-0 py-2" : "items-center gap-3 px-2 py-2"}`}
             style={isActive(SETTINGS.href) 
               ? "background-color: var(--surface-1); color: #fff;" 
@@ -334,7 +340,21 @@
                 {/each}
               </svg>
             {:else}
-              <span class="grid h-5 w-5 place-items-center opacity-70 group-hover:opacity-100">{SETTINGS.icon}</span>
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="shrink-0 opacity-70 group-hover:opacity-100"
+              >
+                {#each COLLAPSED_ICON_PATHS.settings as d (d)}
+                  <path d={d} />
+                {/each}
+              </svg>
               <span class="truncate">{SETTINGS.label}</span>
             {/if}
           </a>
@@ -366,6 +386,7 @@
                 stroke-width="1.8"
                 stroke-linecap="round"
                 stroke-linejoin="round"
+                class={refreshBusy ? "animate-spin" : ""}
               >
                 <path d="M21 12a9 9 0 1 1-2.6-6.4" />
                 <path d="M21 3v6h-6" />
@@ -407,7 +428,7 @@
     class="flex shrink-0 items-center justify-between border-t px-4"
     style="height: 30px; border-color: var(--border-subtle); color: var(--text-muted); font-size: 11px;"
   >
-    <div>Solid Synapse © 2026</div>
+    <div>Solid Synapse (c) 2026</div>
     <div>Last refresh: {lastRefresh}</div>
   </footer>
 </div>

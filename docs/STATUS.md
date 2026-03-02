@@ -10,13 +10,15 @@
 - Legacy path: aktif (kanıt bekleniyor)
 - Pipeline V1: implementasyon mevcut, default değil (kanıt: docs/architecture/pipeline-v1.md + src path list)
 - Phase 2 / D-004 verification: **DONE** (Evidence root: docs\evidence\D004_verify_20260219-050337\)
+- Current phase: P5 post-closure stabilization (P5.13 closure PASS; PRS manual live sweep NARROW fix queue F-PRS-01..08 active).
+- Budget guard policy: monitor-only lock active; optional enforcement toggle deferred by D-031 pending dedicated future package + SSOT FLIP.
 
 ## What we know (Evidence-based facts)
 - Pipeline V1 code: src/mcp_server/pipeline_v1.py
 - V1 entrypoint method exists per architecture doc: ServerManager.execute_request_v1 (src/mcp_server/manager.py) [EVIDENCE NEEDED: line refs]
 - Legacy server/manager: src/mcp_server/agent_server.py, src/mcp_server/manager.py
 - UI entry: src/ui/main_window.py
-- UI (Tauri/Svelte) thin-shell progress (no wiring; evidence-based):
+- UI (Tauri/Svelte) thin-shell progress (P4 no-wiring baseline + P5 scoped wiring evidence):
   - SSOT/UI bootstrap anchors PASS: docs\evidence\SSOT_UI_BOOTSTRAP_20260225-010058
   - Connections page replication + triage PASS: docs\evidence\P4_UI_REPL_P1_20260225-012036
   - Connections polish verify PASS (hardcode review pending): docs\evidence\P4_UI_REPL_P1_POLISH_VERIFY_20260225-025002
@@ -28,7 +30,42 @@
   - P5.3 UI session state PASS (UI-only): docs\evidence\P5_3_UI_SESSION_STATE_VERIFY_20260226-012544
   - P5.2 UI→core dry_run dispatch PASS: docs\evidence\P5_WIRING_UI_DISPATCH_20260225-104400
   - P5.5 Preflight validation PASS (provider-free): docs\evidence\P5_5_PREFLIGHT_VERIFY_20260226-022803
-  - P5.6 Copy Config canonicalization PASS (core-generated): docs\evidence\P5_6_COPY_CONFIG_VERIFY_20260226-024338
+  - P5.6 Copy Config canonicalization PASS (core-generated + UI row Copy enabled): docs\evidence\P5_6_COPY_CONFIG_VERIFY_20260226-024338; docs\evidence\P5_6_COPY_UI_ENABLE_20260227-070630
+  - P5.8 Connections lifecycle wiring PASS (Start/Stop/Delete row actions wired via single-entrypoint; thin-shell guard preserved): docs\evidence\P5_8A_DELETE_WIRING_20260227-073626;
+docs\evidence\P5_8B_START_STOP_WIRING_20260227-074309; docs\evidence\P5_8C_DELETE_ROW_UNGATE_20260227-075607
+  - P5.9 Runtime orchestration PASS (core runtime Start/Stop + SSE lifecycle + runtime/encoding stabilization): docs\evidence\P5_9_TASK_PACKAGE_ADD_20260227-091534;
+docs\evidence\P5_9A_RETRY_CORE_ONLY_V2_20260227-092552; docs\evidence\INCIDENT_START_TEST_SPLIT_FIX_V1_20260227-100837;
+docs\evidence\P5_9A_DRYRUN_PROJECTID_REGRESSION_TEST_20260227-101255; docs\evidence\P5_9_REAL_SURFACE_SMOKE_V1_20260227-101926;
+docs\evidence\FULL_OWNERSHIP_STOP_WIN87_FIX_20260227-120009; docs\evidence\ENCODING_CHARMAP_FIX_20260227-123051; docs\evidence\DRYRUN_BANNER_COMPACT_V1_20260227-123854;
+docs\evidence\P5_9_RUNTIME_ENCODING_CLOSURE_AUDIT_20260227-124419
+  - P5.10 IDE tool response contract PASS (success non-empty MCP content/text + explicit error.code/error.message on failure): docs\evidence\P5_10_TASK_PACKAGE_ADD_20260227-195403; docs\evidence\P5_10A_MCP_CONTENT_ERROR_CONTRACT_20260227-195727; docs\evidence\P5_10A_CLOSURE_AUDIT_20260227-203253
+  - P5.11A Usage/Summary wiring PASS (dispatcher-backed KPIs/rows; static seed removed; explicit error rendering): docs\evidence\P5_11A_USAGE_SUMMARY_WIRING_20260227-205310
+  - P5.11B Usage/History wiring PASS (dispatcher-backed rows; stub wording removed on wired read path; explicit parse/dispatch error rendering): docs\evidence\P5_11B_USAGE_HISTORY_WIRING_20260227-210405
+  - P5.11C Policies/Persona wiring PASS (core-backed persona state get/set; persisted canonical state; explicit validation errors): docs\evidence\P5_11C_POLICIES_PERSONA_WIRING_20260227-211026
+  - P5.11D Policies/Optimizations wiring PASS (core-backed toggle state get/set; explicit validation errors): docs\evidence\P5_11D_POLICIES_OPTIMIZATIONS_WIRING_20260227-211824
+  - P5.11E Resilience/Budget wiring PASS (core-backed budget state get/set; explicit validation errors): docs\evidence\P5_11E_RESILIENCE_BUDGET_WIRING_20260227-213627
+  - P5.11F Resilience/Interceptors wiring PASS (core-backed interceptors state get/set; explicit validation errors): docs\evidence\P5_11F_RESILIENCE_INTERCEPTORS_WIRING_20260227-214919
+  - P5.11G Dashboard wiring PASS (core-backed dashboard state get/set; explicit validation errors): docs\evidence\P5_11G_DASHBOARD_WIRING_20260227-220945
+  - P5.11H Settings wiring PASS (core-backed settings state get/set; explicit validation errors): docs\evidence\P5_11H_SETTINGS_WIRING_20260227-223113
+  - P5.11 Closure PASS (full-surface regression): docs\evidence\P5_11_FULL_SURFACE_REGRESSION_20260227-224528
+  - P5.11 PRS live validation matrix PASS (Policies/Resilience/Settings get/set + persistence + validation contract): docs\evidence\P5_11_PRS_LIVE_VALIDATION_MATRIX_V1_RETRY_20260228-085227
+  - P5.11 PRS persona runtime binding + live confirm PASS (runtime persona prompt injection verified with signature marker [PERSO_TEST_OK]; IDE tool restart required for fresh runtime pickup): docs\evidence\P5_11PRS_PERSONA_RUNTIME_BINDING_20260301-001548
+  - P5.11 PRS manual live sweep NARROW (functional persistence PASS; unresolved UX/data-parity findings queued as F-PRS-01..08): docs\evidence\P5_11_PRS_MANUAL_SWEEP_EVIDENCE_INDEX_20260228-092749
+  - P5.12 Closure PASS (post-P5.11 stability + dashboard parity/polish + SSOT index + closure audit): docs\evidence\P5_12_TASK_PACKAGE_ADD_20260227-225744; docs\evidence\ACTIVE_BRIDGES_STOP_PARITY_V2_20260228-052546; docs\evidence\DASHBOARD_REFRESH_AND_HISTORY_CLEAR_PARITY_PROBE_20260228-063153; docs\evidence\DASHBOARD_POLISH_P7_APPLY_20260228-063404; docs\evidence\DASHBOARD_POLISH_P8_RECENT12_20260228-065147; docs\evidence\DASHBOARD_POLISH_P8B_REFRESH_FEEDBACK_20260228-065232; docs\evidence\HISTORY_CLEAR_PARITY_FINAL_CHECK_20260228-065511; docs\evidence\P5_12D_CLOSURE_AUDIT_20260228-075948
+  - P5.12B Active Bridges running semantic + stop/start parity PASS (runtime-stuck listener guard + dashboard KPI parity): docs\evidence\ACTIVE_BRIDGES_STOP_PARITY_V2_20260228-052546
+  - P5.12B Dashboard refresh + History Clear parity probe PASS (no-edit root-cause evidence): docs\evidence\DASHBOARD_REFRESH_AND_HISTORY_CLEAR_PARITY_PROBE_20260228-063153
+  - P5.12C Dashboard parity+polish apply PASS (fresh live/session reconfirmation complete): docs\evidence\DASHBOARD_POLISH_P7_APPLY_20260228-063404; docs\evidence\DASHBOARD_POLISH_P8_RECENT12_20260228-065147; docs\evidence\DASHBOARD_POLISH_P8B_REFRESH_FEEDBACK_20260228-065232; docs\evidence\HISTORY_CLEAR_PARITY_FINAL_CHECK_20260228-065511; docs\evidence\P5_12C_REVALIDATE_SUPERVISOR_20260301-224444; docs\evidence\P5_12C_A1_REFRESH_FEEDBACK_REVALIDATE_20260301-235523; docs\evidence\P5_12C_A1317_NO_STATIC_SEED_REVALIDATE_20260302-001319; docs\evidence\P5_12C_1315_LIVE_20260302-030853
+  - P5.12D Dashboard micro-polish slices PASS (KPI typography/icons + trend readability/composition + breakdown Top3+Others/legend + final chart alignment): docs\evidence\P5_12D_SLICE_01_KPI_TYPO_ICON_POLISH_20260228-070644; docs\evidence\P5_12D_SLICE_02B_TREND_VISUAL_TUNING_20260228-071905; docs\evidence\P5_12D_SLICE_02C_TREND_XAXIS_READABILITY_20260228-072458; docs\evidence\P5_12D_SLICE_03_BREAKDOWN_INFORMATION_ARCH_20260228-072632; docs\evidence\P5_12D_SLICE_02D_03B_GRAPH_COMPOSITION_FINETUNE_20260228-074811; docs\evidence\CHART_ALIGNMENT_FINAL_POLISH_PIE_UP20_20260228-075720
+  - P5.13 Closure PASS (dashboard residual polish: alerts density + recent table balance + top expensive semantic labels): docs\evidence\P5_13A_ALERT_THRESHOLD_AND_SPACING_TUNE_20260228-081116; docs\evidence\P5_13A_ALERT_CONTEXT_TRIM_20260228-081411; docs\evidence\P5_13B_RECENT_TABLE_EQUAL_SPACING_CENTER_ALIGN_20260228-082716; docs\evidence\P5_13C_REMOVE_ID_USE_TIMESTAMP_ONLY_20260228-083837; docs\evidence\STEP_P513_SSOT_INDEX_AND_CLOSURE_AUDIT_20260228-083945
+  - P5.14 queue active (proof-first): Interceptors runtime effect -> Optimizations runtime effect -> Usage/Connections residual fixes -> Settings functional validation -> tooltip/helper assessment -> final copy/meta + UI polish/app icon.
+  - P5.14A Interceptors runtime effect PASS (state-only gap fixed; execute path hook proven): docs\evidence\P5_14A_FIX_INTERCEPTORS_RUNTIME_HOOK_V1_20260301-014756
+  - P5.14B Optimizations runtime effect PASS (context cache toggle binding + request dedup runtime hit path proven): docs\evidence\P5_14B_FIX_OPTIMIZATIONS_RUNTIME_BINDING_V1_20260301-014827
+  - P5.14C Usage/Connections residual behavior fixes REVALIDATE (recent regressions require reconfirmation): docs\evidence\P5_14C_USAGE_CONNECTIONS_RESIDUAL_FIXES_V1_20260301-021346
+  - P5.14D Settings functional validation PASS (get/set persistence + validation error code/message + restore baseline): docs\evidence\P5_14D_SETTINGS_FUNCTIONAL_VALIDATION_20260301-022031
+  - P5.14E Tooltip/helper assessment STALE_SSOT (helper system still outstanding; assessment pending implementation): docs\evidence\P5_14E_TOOLTIP_HELPER_ASSESSMENT_20260301-022540
+  - P5.14F UI final fix queue slice PASS (fresh reconfirmation complete after latest adjustments): docs\evidence\UI_FINAL_FIX_QUEUE_APPLY_V3_20260301-090446; docs\evidence\P5_14F_RECONFIRM_20260302-020642; docs\evidence\P5_14F_SLICE_A_20260302-023124; docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711
+  - P5.14 runtime terminal proof PASS (deterministic interceptor+dedup+cache behavior gate): docs\evidence\P5_14_RUNTIME_EFFECT_TERMINAL_PROOF_V3_20260301-020833
+  - Pre-dashboard safety checkpoint created (docs-only + git recovery refs): docs\evidence\PRE_DASHBOARD_SAFETY_CHECKPOINT_20260302-094944 (head branch: checkpoint/pre-dashboard-head-20260302-094944; working snapshot ref: refs/checkpoints/pre-dashboard-snapshot-20260302-094944)
 - Usage DB: data/usage.db + src/data/usage_db.py
 - Config: data/config.json + src/config/manager.py
 - Provider integration: src/vertex/client.py (uses Google Vertex AI)

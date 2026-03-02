@@ -27,8 +27,8 @@
   const SORTS: { id: SortId; label: string }[] = [
     { id: "time_desc", label: "Time (newest)" },
     { id: "time_asc", label: "Time (oldest)" },
-    { id: "cost_desc", label: "Cost (high→low)" },
-    { id: "latency_desc", label: "Latency (high→low)" },
+    { id: "cost_desc", label: "Cost (high->low)" },
+    { id: "latency_desc", label: "Latency (high->low)" },
   ];
 
   let { provider = $bindable("all"), dateRange = $bindable("24h"), sort = $bindable("time_desc") } = $props();
@@ -91,7 +91,7 @@
       <button type="button" class={triggerClass} style={triggerStyle} aria-expanded={openMenu === "provider"} onclick={() => toggleMenu("provider")}>
         <span class="text-xs" style="color: var(--text-muted);">Provider</span>
         <span class="truncate">{labelForProvider(provider)}</span>
-        <span class="text-[10px]" style="color: var(--text-muted);">▾</span>
+        <span class="text-[10px]" style="color: var(--text-muted);">v</span>
       </button>
       {#if openMenu === "provider"}
         <div class="absolute left-0 z-10 mt-2 w-[240px] overflow-hidden border" style={menuStyle}>
@@ -116,7 +116,7 @@
       <button type="button" class={triggerClass} style={triggerStyle} aria-expanded={openMenu === "dateRange"} onclick={() => toggleMenu("dateRange")}>
         <span class="text-xs" style="color: var(--text-muted);">Date range</span>
         <span class="truncate">{labelForDateRange(dateRange)}</span>
-        <span class="text-[10px]" style="color: var(--text-muted);">▾</span>
+        <span class="text-[10px]" style="color: var(--text-muted);">v</span>
       </button>
       {#if openMenu === "dateRange"}
         <div class="absolute left-0 z-10 mt-2 w-[240px] overflow-hidden border" style={menuStyle}>
@@ -141,7 +141,7 @@
       <button type="button" class={triggerClass} style={triggerStyle} aria-expanded={openMenu === "sort"} onclick={() => toggleMenu("sort")}>
         <span class="text-xs" style="color: var(--text-muted);">Sort</span>
         <span class="truncate">{labelForSort(sort)}</span>
-        <span class="text-[10px]" style="color: var(--text-muted);">▾</span>
+        <span class="text-[10px]" style="color: var(--text-muted);">v</span>
       </button>
       {#if openMenu === "sort"}
         <div class="absolute left-0 z-10 mt-2 w-[260px] overflow-hidden border" style={menuStyle}>
@@ -163,3 +163,4 @@
     </div>
   </div>
 </div>
+

@@ -13,7 +13,17 @@ pub struct DispatchResult {
     pub ok: bool,
     pub status: String,
     pub text: Option<String>,
+    pub result: Option<serde_json::Value>,
+    pub state: Option<serde_json::Value>,
     pub error: Option<DispatchError>,
+    pub errors: Option<Vec<String>>,
+    pub warnings: Option<Vec<String>>,
+    pub schema_hint: Option<serde_json::Value>,
+    pub data: Option<serde_json::Value>,
+    pub normalized_payload: Option<serde_json::Value>,
+    pub config_text: Option<String>,
+    pub dry_run_trace: Option<serde_json::Value>,
+    pub connections: Option<Vec<serde_json::Value>>,
 }
 
 fn repo_root_from_manifest_dir() -> Result<PathBuf, String> {

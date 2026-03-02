@@ -676,3 +676,47 @@ P4 UI PREP is ALLOWED when:
 - Usage and constraints are documented in docs/UI_STYLE_GUIDE.md.
 - New UI pages MUST reuse these primitives and tokens.
 - No alternative styling system is allowed.
+
+## D-030 — P5 Remaining Pages Wiring Order Lock
+
+- Date: 2026-02-27
+- Decision: After Connections completion (P5.8/P5.9/P5.10), remaining page wiring must proceed in strict page-scoped packages and fixed order.
+- Scope: Usage, Policies, Resilience, Settings, Dashboard (non-Connections surfaces).
+
+### Normative rules
+- Execution order is fixed:
+  1) Usage/Summary
+  2) Usage/History
+  3) Policies/Persona Lite
+  4) Policies/Optimizations
+  5) Resilience/Budget Guards
+  6) Resilience/Interceptors
+  7) Dashboard
+  8) Settings
+- One package = one page (or one leaf route group) only; no cross-page feature expansion.
+- Functional wiring precedes UI polish. Layout/visual refactors are forbidden unless required for functional success/error rendering.
+- Thin-shell and single-entrypoint rules from D-024 and D-029 remain mandatory for every package.
+- Existing Connections behavior is locked; no opportunistic refactor during non-Connections wiring packages.
+
+### Evidence gate
+- Each package must produce docs\evidence\<id_timestamp>\ with: commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt.
+- If UI is touched: ui_static_check.txt is mandatory.
+- Provider/network callsite guard (UI production path) must remain zero and be evidenced via grep_proofs.txt.
+
+## D-031 — Budget Enforcement Toggle Deferred; Monitor-Only Lock Continues
+
+- Date: 2026-03-01
+- Decision:
+  - Budget Guard MUST remain monitor-only for current phase packages.
+  - Optional enforcement toggle (block/throttle at threshold) is explicitly deferred.
+  - Enforcement toggle is allowed only after a dedicated future package + SSOT FLIP decision + deterministic evidence.
+- Constraints:
+  - Current runtime behavior MUST NOT block, throttle, or alter request execution from budget thresholds.
+  - Dashboard/alerts may render budget warning/critical status only (render-only semantics).
+- Next-gate order (normative):
+  1) Interceptors runtime effect proof
+  2) Optimizations runtime effect proof (context caching + request dedup)
+  3) Usage/Connections residual wiring behavior fixes
+  4) Settings functional validation
+  5) Tooltip/helper evaluation (post-functional gate)
+  6) Final copy/meta fixes + UI polish + app icon

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from vertexai import init as vertex_init
 from vertexai.generative_models import GenerativeModel
 
 from src.config.manager import ConfigManager
+
+logger = logging.getLogger(__name__)
 
 class CredentialError(Exception): ...
 
@@ -82,9 +85,14 @@ class VertexAIClient:
                 enc = tiktoken.get_encoding("cl100k_base")
                 input_tokens = len(enc.encode(prompt))
                 output_tokens = len(enc.encode(getattr(resp, "text", "") or ""))
-                print(f"⚠️  WARNING: Usage metadata missing. Estimated tokens: in={input_tokens}, out={output_tokens}")
+                logger.warning(
+                    "Usage metadata missing. Estimated tokens: in=%s, out=%s",
+                    input_tokens,
+                    output_tokens,
+                )
         except Exception as e:
-            print(f"⚠️  WARNING: Could not extract usage metadata: {e}. Cost will be $0")
+            err_safe = str(e).encode("ascii", "backslashreplace").decode("ascii")
+            logger.warning("Could not extract usage metadata (%s). Cost will be $0", err_safe)
             input_tokens = 0
             output_tokens = 0
 
