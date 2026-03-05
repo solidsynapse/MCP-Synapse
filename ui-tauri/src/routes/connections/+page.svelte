@@ -37,6 +37,7 @@
     label: string;
     required: boolean;
     kind: string;
+    options?: Array<{ value: string; label: string }>;
     placeholder?: string;
     help?: string;
     section?: string;
@@ -82,7 +83,17 @@
       defaults?: Record<string, string>;
       notes?: string[];
       warnings?: string[];
+      entries?: VaultEntry[];
+      secret?: string;
+      path?: string;
     } | null;
+  };
+
+  type VaultEntry = {
+    id: string;
+    name: string;
+    type: string;
+    created_at?: string;
   };
 
   let connections = $state<Connection[]>([]);
@@ -109,6 +120,17 @@
   let newWizardOpen = $state(false);
   let wizardMode = $state<"create" | "edit">("create");
   let editingConnectionId = $state<string | null>(null);
+  let vaultEntries = $state<VaultEntry[]>([]);
+  let vaultStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
+  let vaultNoticeKind = $state<BannerKind>("idle");
+  let vaultNoticeText = $state("");
+  let vaultPickerOpen = $state(false);
+  let vaultTargetFieldId = $state<string | null>(null);
+  let vaultName = $state("");
+  let vaultSecret = $state("");
+  let vaultBusy = $state(false);
+  let vaultDeleteBusyId = $state<string | null>(null);
+  let helperOpenId = $state<string | null>(null);
   type ProviderOption = { id: ProviderId; label: string };
   const PROVIDERS: ProviderOption[] = [
     { id: "openai", label: "OpenAI" },
@@ -262,6 +284,228 @@
     newWizardNoticeText = "";
   }
 
+  function setVaultNotice(kind: BannerKind, text: string) {
+    vaultNoticeKind = kind;
+    vaultNoticeText = text;
+  }
+
+  function clearVaultNotice() {
+    vaultNoticeKind = "idle";
+    vaultNoticeText = "";
+  }
+
+  function inferVaultEntryType() {
+    const fieldId = String(vaultTargetFieldId || "").trim().toLowerCase();
+    if (fieldId === "credentials_path" || fieldId.endsWith("_path") || fieldId.includes("credential")) {
+      return "credentials_path";
+    }
+    if (fieldId === "api_key" || fieldId.includes("api_key") || fieldId.includes("token") || fieldId.includes("secret")) {
+      return "api_key";
+    }
+    return "api_key";
+  }
+
+  function helperCopy(fieldId: string) {
+    const id = String(fieldId || "").trim().toLowerCase();
+    if (id === "model_id") {
+      return "Use the exact provider model ID. Placeholder examples show a valid format.";
+    }
+    if (id === "credential_source") {
+      return "File mode uses Credentials path. Manual mode uses AWS keys. API Key mode uses Bedrock bearer token.";
+    }
+    if (id === "endpoint") {
+      return "Leave empty to use core defaults. Set only if your provider requires a custom base URL.";
+    }
+    if (id === "credentials_path") {
+      return "Local credentials file path. Use Browse or Vault to fill this value.";
+    }
+    if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
+      return "Bedrock manual credentials fields. Session token is optional for temporary credentials.";
+    }
+    if (id === "bedrock_api_key") {
+      return "Bedrock API bearer token (ABSK...). Required when Credential source is API Key.";
+    }
+    return "";
+  }
+
+  function toggleHelper(fieldId: string) {
+    const id = String(fieldId || "").trim();
+    helperOpenId = helperOpenId === id ? null : id;
+  }
+
+  function isVaultCredentialsPathType() {
+    return inferVaultEntryType() === "credentials_path";
+  }
+
+  async function triggerVaultCredentialsBrowse() {
+    clearVaultNotice();
+    try {
+      const result = await dispatchInvoke({ op: "vault.pick_credentials_path" });
+      const selected = result.ok ? String(result.data?.path ?? "").trim() : "";
+      if (selected) {
+        vaultSecret = selected;
+        return;
+      }
+      if (!result.ok) {
+        setVaultNotice("danger", result.error?.message || "File picker unavailable.");
+      }
+      return;
+    } catch {
+      // Fallback below keeps compatibility if picker dispatch is unavailable at runtime.
+    }
+
+    const el = document.getElementById("vault-credentials-file") as HTMLInputElement | null;
+    el?.click();
+  }
+
+  function onVaultCredentialsFileSelected(event: Event) {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+    const tauriPath = String((file as any).path ?? "").trim();
+    if (tauriPath) {
+      vaultSecret = tauriPath;
+    } else {
+      setVaultNotice("danger", "Native file path unavailable. Please use the Tauri file picker.");
+    }
+    if (input) input.value = "";
+  }
+
+  function validateCredentialsPathValue(pathValue: string): string | null {
+    const value = String(pathValue || "").trim();
+    if (!value) return null;
+    if (value.toLowerCase().startsWith("vault://")) return null;
+    const unquoted = value.replace(/^['"]+|['"]+$/g, "");
+    const hasSeparator = unquoted.includes("\\") || unquoted.includes("/") || unquoted.includes(":");
+    if (!hasSeparator) {
+      return "Credentials path looks invalid. Use Browse to select a file path.";
+    }
+    return null;
+  }
+
+  async function loadVaultEntries() {
+    vaultStatus = "loading";
+    clearVaultNotice();
+    try {
+      const result = await dispatchInvoke({ op: "vault.list" });
+      const entries = result.ok ? (result.data?.entries ?? []) : [];
+      vaultEntries = Array.isArray(entries) ? entries : [];
+      if (result.ok) {
+        vaultStatus = "ready";
+        return;
+      }
+      vaultStatus = "error";
+      setVaultNotice("danger", result.error?.message || "Vault list failed");
+    } catch (err: any) {
+      vaultStatus = "error";
+      setVaultNotice("danger", err?.message || "Vault list failed");
+    }
+  }
+
+  async function openVaultPicker(fieldId: string) {
+    vaultTargetFieldId = fieldId;
+    vaultPickerOpen = true;
+    await loadVaultEntries();
+  }
+
+  function closeVaultPicker() {
+    vaultPickerOpen = false;
+    vaultTargetFieldId = null;
+    vaultName = "";
+    vaultSecret = "";
+    vaultBusy = false;
+    vaultDeleteBusyId = null;
+    clearVaultNotice();
+  }
+
+  async function createVaultEntry() {
+    if (vaultBusy) return;
+    const name = vaultName.trim();
+    const type = inferVaultEntryType();
+    const secret = vaultSecret;
+    if (!name || !secret) {
+      setVaultNotice("danger", "Name and secret are required.");
+      return;
+    }
+    if (type === "credentials_path") {
+      const validationMessage = validateCredentialsPathValue(secret);
+      if (validationMessage) {
+        setVaultNotice("danger", validationMessage);
+        return;
+      }
+    }
+    if (!type) {
+      setVaultNotice("danger", "Vault type resolution failed.");
+      return;
+    }
+    vaultBusy = true;
+    try {
+      const importMode = type === "credentials_path" ? "credentials_file" : "plain";
+      const result = await dispatchInvoke({ op: "vault.create", entry: { name, type, secret, import_mode: importMode } });
+      if (result.ok) {
+        vaultName = "";
+        vaultSecret = "";
+        await loadVaultEntries();
+        setVaultNotice("success", "Vault entry saved.");
+      } else {
+        setVaultNotice("danger", result.error?.message || "Vault save failed");
+      }
+    } catch (err: any) {
+      setVaultNotice("danger", err?.message || "Vault save failed");
+    } finally {
+      vaultBusy = false;
+    }
+  }
+
+  async function useVaultEntry(entryId: string) {
+    if (vaultBusy || !vaultTargetFieldId) return;
+    if (vaultTargetFieldId === "credentials_path") {
+      updateWizardField(vaultTargetFieldId, `vault://${entryId}`);
+      closeVaultPicker();
+      return;
+    }
+    vaultBusy = true;
+    try {
+      const result = await dispatchInvoke({ op: "vault.read", entry_id: entryId });
+      const secret = result.ok ? result.data?.secret : "";
+      if (result.ok && typeof secret === "string" && secret.trim()) {
+        if (vaultTargetFieldId === "credentials_path") {
+          const validationMessage = validateCredentialsPathValue(secret);
+          if (validationMessage) {
+            setVaultNotice("danger", validationMessage);
+            return;
+          }
+        }
+        updateWizardField(vaultTargetFieldId, secret);
+        closeVaultPicker();
+        return;
+      }
+      setVaultNotice("danger", result.error?.message || "Vault read failed");
+    } catch (err: any) {
+      setVaultNotice("danger", err?.message || "Vault read failed");
+    } finally {
+      vaultBusy = false;
+    }
+  }
+
+  async function deleteVaultEntry(entryId: string) {
+    if (vaultBusy) return;
+    vaultDeleteBusyId = entryId;
+    try {
+      const result = await dispatchInvoke({ op: "vault.delete", entry_id: entryId });
+      if (result.ok) {
+        await loadVaultEntries();
+        setVaultNotice("success", "Vault entry deleted.");
+      } else {
+        setVaultNotice("danger", result.error?.message || "Vault delete failed");
+      }
+    } catch (err: any) {
+      setVaultNotice("danger", err?.message || "Vault delete failed");
+    } finally {
+      vaultDeleteBusyId = null;
+    }
+  }
+
   async function loadNewWizardSchemaHint(providerId: ProviderId) {
     newWizardSchemaStatus = "loading";
     newWizardSchemaHint = null;
@@ -342,7 +586,7 @@
       required: false,
       kind: "text",
       placeholder: "C:\\path\\to\\credentials.json",
-      help: "Optional path to a local credential file (core-owned).",
+      help: "Optional path to a local credentials file used by the core runtime.",
       section: "advanced",
     },
   ];
@@ -618,6 +862,7 @@
     wizardMode = "create";
     editingConnectionId = null;
     newWizardOpen = true;
+    helperOpenId = null;
     newWizardProvider = null;
     providerQuery = "";
     providerMenuOpen = false;
@@ -632,6 +877,7 @@
     newWizardOpen = false;
     wizardMode = "create";
     editingConnectionId = null;
+    helperOpenId = null;
   }
 
   function updateWizardField(fieldKey: string, value: string) {
@@ -663,12 +909,51 @@
     return kind || "text";
   }
 
+  function inputTypeForField(field: SchemaHintField) {
+    return fieldKind(field) === "password" ? "password" : "text";
+  }
+
+  function fieldOptions(field: SchemaHintField) {
+    const options = Array.isArray(field.options) ? field.options : [];
+    return options
+      .map((opt) => ({
+        value: String(opt?.value ?? "").trim(),
+        label: String(opt?.label ?? "").trim(),
+      }))
+      .filter((opt) => opt.value.length > 0);
+  }
+
+  function activeBedrockCredentialSource() {
+    const provider = String(newWizardProvider ?? "").trim().toLowerCase();
+    if (provider !== "bedrock") return "";
+    const raw = String(newWizardValues.credential_source ?? "").trim().toLowerCase();
+    if (raw === "manual") return "manual";
+    if (raw === "api_key") return "api_key";
+    return "file";
+  }
+
+  function isWizardFieldVisible(fieldId: string) {
+    const id = String(fieldId || "").trim().toLowerCase();
+    const source = activeBedrockCredentialSource();
+    if (!source) return true;
+    if (id === "credentials_path") return source === "file";
+    if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
+      return source === "manual";
+    }
+    if (id === "bedrock_api_key") return source === "api_key";
+    return true;
+  }
+
   function fieldLabel(field: SchemaHintField) {
     return String(field.label ?? field.id ?? "").trim() || String(field.id ?? "");
   }
 
   function inputAutocompleteForField(fieldId: string) {
-    return fieldId === "credentials_path" ? "new-password" : "off";
+    const id = String(fieldId || "").trim().toLowerCase();
+    if (id === "credentials_path" || id === "aws_secret_access_key" || id === "aws_session_token" || id === "bedrock_api_key") {
+      return "new-password";
+    }
+    return "off";
   }
 
   function modelPlaceholderForProvider(providerId: ProviderId | null): string {
@@ -705,9 +990,28 @@
       for (const f of fields) {
         const id = String(f.id || "").trim();
         if (!id || id === "connection_name" || id === "provider_id") continue;
+        if (!isWizardFieldVisible(id)) continue;
         const value = String(newWizardValues[id] ?? "").trim();
         if (!value) continue;
         payload[id] = value;
+      }
+      if (providerId === "bedrock") {
+        const sourceRaw = String(newWizardValues.credential_source ?? payload.credential_source ?? "file").trim().toLowerCase();
+        payload.credential_source = sourceRaw === "manual" ? "manual" : sourceRaw === "api_key" ? "api_key" : "file";
+        if (payload.credential_source === "manual") {
+          delete payload.credentials_path;
+          delete payload.bedrock_api_key;
+        } else if (payload.credential_source === "api_key") {
+          delete payload.credentials_path;
+          delete payload.aws_access_key_id;
+          delete payload.aws_secret_access_key;
+          delete payload.aws_session_token;
+        } else {
+          delete payload.aws_access_key_id;
+          delete payload.aws_secret_access_key;
+          delete payload.aws_session_token;
+          delete payload.bedrock_api_key;
+        }
       }
       return payload;
     }
@@ -726,6 +1030,12 @@
     setBanner("idle", "");
     try {
       const connection = buildNewWizardConnectionPayload();
+      const credentialsPath = String(connection.credentials_path ?? "").trim();
+      const validationMessage = validateCredentialsPathValue(credentialsPath);
+      if (validationMessage) {
+        setNewWizardNotice("danger", validationMessage);
+        return;
+      }
       const result = await dispatchInvoke({
         op: "connections.preflight",
         connection,
@@ -755,6 +1065,12 @@
     setBanner("idle", "");
     try {
       const connection = buildNewWizardConnectionPayload();
+      const credentialsPath = String(connection.credentials_path ?? "").trim();
+      const validationMessage = validateCredentialsPathValue(credentialsPath);
+      if (validationMessage) {
+        setNewWizardNotice("danger", validationMessage);
+        return;
+      }
       const op = wizardMode === "edit" ? "connections.update" : "connections.create";
       const payload: Record<string, unknown> = { op, connection };
       if (wizardMode === "edit" && editingConnectionId) {
@@ -794,6 +1110,7 @@
     wizardMode = "edit";
     editingConnectionId = connectionId;
     newWizardOpen = true;
+    helperOpenId = null;
     newWizardProvider = target.providerId;
     providerQuery = providerLabel(target.providerId);
     providerMenuOpen = false;
@@ -1370,11 +1687,29 @@
 
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               {#each effectiveNewWizardCommonFields() as field (field.id)}
-                {#if field.id !== "connection_name"}
+                {#if field.id !== "connection_name" && isWizardFieldVisible(field.id)}
                   <div>
-                    <label class="ui-subtitle" for={`new-${field.id}`}>
-                      {fieldLabel(field)}{field.required ? " *" : ""}
-                    </label>
+                    <div class="flex items-center justify-between gap-2">
+                      <label class="ui-subtitle" for={`new-${field.id}`}>
+                        {fieldLabel(field)}{field.required ? " *" : ""}
+                      </label>
+                      {#if helperCopy(field.id)}
+                        <button
+                          type="button"
+                          class="ui-focus rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                          style="border-color: var(--border-subtle); color: var(--text-muted);"
+                          aria-expanded={helperOpenId === field.id}
+                          onclick={() => toggleHelper(field.id)}
+                        >
+                          ?
+                        </button>
+                      {/if}
+                    </div>
+                    {#if helperOpenId === field.id}
+                      <div class="mt-1 rounded-md border px-2 py-1 text-[11px]" style="border-color: var(--border-subtle); color: var(--text-muted);">
+                        {helperCopy(field.id)}
+                      </div>
+                    {/if}
                     {#if fieldKind(field) === "multiline"}
                       <textarea
                         id={`new-${field.id}`}
@@ -1383,6 +1718,18 @@
                         value={newWizardValues[field.id] || ""}
                         oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLTextAreaElement).value)}
                       ></textarea>
+                    {:else if fieldKind(field) === "select"}
+                      <select
+                        id={`new-${field.id}`}
+                        class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                        style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                        value={newWizardValues[field.id] || ""}
+                        onchange={(e) => updateWizardField(field.id, (e.currentTarget as HTMLSelectElement).value)}
+                      >
+                        {#each fieldOptions(field) as option (option.value)}
+                          <option value={option.value}>{option.label}</option>
+                        {/each}
+                      </select>
                     {:else}
                       {#if isCredentialsField(field.id)}
                         <div class="mt-2 flex items-center gap-2">
@@ -1405,6 +1752,14 @@
                           >
                             Browse
                           </button>
+                          <button
+                            type="button"
+                            class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                            onclick={() => openVaultPicker(field.id)}
+                          >
+                            Vault
+                          </button>
                           <input
                             id={`new-${field.id}-file`}
                             type="file"
@@ -1415,6 +1770,7 @@
                       {:else}
                         <input
                           id={`new-${field.id}`}
+                          type={inputTypeForField(field)}
                           class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
                           style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
                           placeholder={fieldPlaceholder(field)}
@@ -1447,18 +1803,49 @@
                 {:else}
                   <div class="grid gap-3 sm:grid-cols-2">
                     {#each effectiveNewWizardProviderFields() as field (field.id)}
+                      {#if isWizardFieldVisible(field.id)}
                       <div>
-                        <label class="ui-subtitle" for={`new-${field.id}`}>
-                          {fieldLabel(field)}{field.required ? " *" : ""}
-                        </label>
-                        {#if fieldKind(field) === "multiline"}
-                          <textarea
+                        <div class="flex items-center justify-between gap-2">
+                          <label class="ui-subtitle" for={`new-${field.id}`}>
+                            {fieldLabel(field)}{field.required ? " *" : ""}
+                          </label>
+                          {#if helperCopy(field.id)}
+                            <button
+                              type="button"
+                              class="ui-focus rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                              style="border-color: var(--border-subtle); color: var(--text-muted);"
+                              aria-expanded={helperOpenId === field.id}
+                              onclick={() => toggleHelper(field.id)}
+                            >
+                              ?
+                            </button>
+                          {/if}
+                        </div>
+                        {#if helperOpenId === field.id}
+                          <div class="mt-1 rounded-md border px-2 py-1 text-[11px]" style="border-color: var(--border-subtle); color: var(--text-muted);">
+                            {helperCopy(field.id)}
+                          </div>
+                        {/if}
+                    {#if fieldKind(field) === "multiline"}
+                      <textarea
                             id={`new-${field.id}`}
                             class="ui-focus mt-2 w-full rounded-md border p-3 text-[11px] leading-4"
                             style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary); height: 96px; resize: none;"
                             value={newWizardValues[field.id] || ""}
                             oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLTextAreaElement).value)}
                           ></textarea>
+                        {:else if fieldKind(field) === "select"}
+                          <select
+                            id={`new-${field.id}`}
+                            class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                            style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                            value={newWizardValues[field.id] || ""}
+                            onchange={(e) => updateWizardField(field.id, (e.currentTarget as HTMLSelectElement).value)}
+                          >
+                            {#each fieldOptions(field) as option (option.value)}
+                              <option value={option.value}>{option.label}</option>
+                            {/each}
+                          </select>
                         {:else}
                           {#if isCredentialsField(field.id)}
                             <div class="mt-2 flex items-center gap-2">
@@ -1481,6 +1868,14 @@
                               >
                                 Browse
                               </button>
+                              <button
+                                type="button"
+                                class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                                style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                                onclick={() => openVaultPicker(field.id)}
+                              >
+                                Vault
+                              </button>
                               <input
                                 id={`new-${field.id}-file`}
                                 type="file"
@@ -1491,6 +1886,7 @@
                           {:else}
                             <input
                               id={`new-${field.id}`}
+                              type={inputTypeForField(field)}
                               class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
                               style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
                               placeholder={fieldPlaceholder(field)}
@@ -1506,6 +1902,7 @@
                           <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{field.help}</div>
                         {/if}
                       </div>
+                      {/if}
                     {/each}
                   </div>
                 {/if}
@@ -1513,6 +1910,131 @@
             </div>
           </div>
         </div>
+
+        {#if vaultPickerOpen}
+          <div class="fixed inset-0 z-50">
+            <button
+              type="button"
+              class="absolute inset-0 h-full w-full"
+              style="background-color: rgba(0, 0, 0, 0.55);"
+              aria-label="Close vault picker"
+              onclick={closeVaultPicker}
+            ></button>
+            <div class="absolute left-1/2 top-1/2 w-[640px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2">
+              <div class="ui-card ui-pad-md" style="background-color: var(--surface-1);">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="ui-title text-base">Vault</div>
+                  <button
+                    type="button"
+                    class="ui-focus rounded-md border px-3 py-2 text-xs font-medium transition-colors hover:bg-white/5"
+                    style="border-color: var(--border-subtle); color: var(--text-primary); background-color: transparent;"
+                    onclick={closeVaultPicker}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div class={`mt-3 rounded-md border p-2 text-xs ${bannerClass(vaultNoticeKind)}`}>
+                  {#if vaultNoticeText}
+                    <div class="font-medium">{vaultNoticeText}</div>
+                  {:else}
+                    <div style="color: var(--text-muted);"> </div>
+                  {/if}
+                </div>
+
+                <div class="mt-3 grid gap-2">
+                  <input
+                    class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                    style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                    placeholder="Vault entry name"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    bind:value={vaultName}
+                  />
+                  <div class="flex items-center gap-2">
+                    <input
+                      class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                      style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                      placeholder={isVaultCredentialsPathType() ? "Credentials path" : "Secret"}
+                      autocomplete="new-password"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      type={isVaultCredentialsPathType() ? "text" : "password"}
+                      bind:value={vaultSecret}
+                    />
+                    {#if isVaultCredentialsPathType()}
+                      <button
+                        type="button"
+                        class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                        style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                        onclick={triggerVaultCredentialsBrowse}
+                      >
+                        Browse
+                      </button>
+                      <input
+                        id="vault-credentials-file"
+                        type="file"
+                        class="hidden"
+                        onchange={(e) => onVaultCredentialsFileSelected(e)}
+                      />
+                    {/if}
+                  </div>
+                  <div class="flex justify-end">
+                    <button
+                      type="button"
+                      class="ui-focus h-9 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                      style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                      disabled={vaultBusy}
+                      onclick={createVaultEntry}
+                    >
+                      Save to Vault
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mt-3">
+                  {#if vaultStatus === "loading"}
+                    <div class="text-xs text-slate-500">Loading vault entries...</div>
+                  {:else if vaultEntries.length === 0}
+                    <div class="text-xs text-slate-500">No vault entries.</div>
+                  {:else}
+                    <div class="space-y-2">
+                      {#each vaultEntries as entry (entry.id)}
+                        <div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2" style="border-color: var(--border-subtle);">
+                          <div class="min-w-0">
+                            <div class="truncate text-xs font-medium" style="color: var(--text-primary);">{entry.name}</div>
+                            <div class="truncate text-[10px] text-slate-500/90">{entry.type}</div>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <button
+                              type="button"
+                              class="ui-focus h-8 rounded-md border px-2 text-[11px] font-medium transition-colors hover:bg-white/5"
+                              style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                              disabled={vaultBusy}
+                              onclick={() => useVaultEntry(entry.id)}
+                            >
+                              Use
+                            </button>
+                            <button
+                              type="button"
+                              class="ui-focus h-8 rounded-md border px-2 text-[11px] font-medium transition-colors hover:bg-white/5"
+                              style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                              disabled={vaultDeleteBusyId === entry.id}
+                              onclick={() => deleteVaultEntry(entry.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
 
         <div class="mt-4 flex justify-end gap-2">
             <button

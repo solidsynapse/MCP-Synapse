@@ -1,0 +1,46 @@
+﻿RAPOR-2: MVP Sonrası Refaktör (Önerilen Hibrit Yol)
+
+Kapsam:
+- Hedef: İlk ürünü 14 günde paketleyip beta dağıtıma çıkarmak.
+- Senaryo: MVP öncesi minimal guardrail; büyük refaktör MVP sonrası.
+
+MVP Öncesi (14 gün penceresi) - yapılacaklar:
+1) Guardrail dondurma:
+   - core'a yeni provider-specific branch eklememe
+   - execution kontratına yeni LLM-spesifik alan gömmeme
+2) Stabilizasyon:
+   - installer/paketleme, smoke, kritik runtime akışlarının sabitlenmesi
+3) Gözlem:
+   - beta için minimum operasyon metriklerinin güvenceye alınması
+
+MVP Sonrası (fazlı dönüşüm):
+Faz A (0.5-1 hafta): SSOT drift + mimari sınırların netleştirilmesi
+Faz B (1-2 hafta): Generic envelope (Request/Result/Event) + compatibility adapter
+Faz C (1-2 hafta): Hook zinciri (pre_context/policy/routing/post) no-op varsayılanlarla
+Faz D (1-2 hafta): persona/budget/interceptor'ı executable hook'a taşıma
+Faz E (1-2 hafta): provider metadata ile core’dan provider-specific dalları temizleme
+Faz F (1 hafta): observability normalizasyonu + migration sertleştirme
+
+14 gün hedef etkisi:
+- Tahmini hedef tutma olasılığı (danışmanlık tahmini): %70-%85
+- Gerekçe: dağıtım odağı korunur, mimari dönüşüm kontrollü ertelenir.
+
+Riskler:
+1) Teknik borç faizi (orta): kısa süre daha coupling ile yaşanır.
+2) Erteleme riski (orta-yüksek): MVP sonrası refaktör disiplinle planlanmazsa gecikir.
+
+Avantajlar:
+1) İlk gelir/geri bildirim döngüsü erken açılır.
+2) Dönüşüm gerçek kullanım verisiyle önceliklenir.
+3) Refaktör kapsamı daha net ve ölçülebilir hale gelir.
+
+Go/No-Go önerisi:
+- Go (önerilen yol): MVP sonrası planlı refaktör + MVP öncesi sert guardrail.
+
+Karar tetikleyicileri:
+1) Installer + beta readiness checklist %100 tamamlanmadan refaktör fazı başlatılmamalı.
+2) MVP çıktıktan sonra 1 hafta içinde Faz A/B backlog'u takvime bağlanmalı.
+3) Refaktör KPI: her faz sonunda regresyon trendi ve teslimat hızının birlikte izlenmesi.
+
+Sonuç:
+- SaaS ilk ürün hedefi için en dengeli yol hibrit yaklaşım: önce ürün, sonra planlı çekirdek dönüşümü.

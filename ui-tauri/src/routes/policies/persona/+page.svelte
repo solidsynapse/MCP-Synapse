@@ -38,35 +38,42 @@
     { id: "strict", label: "Strict" },
   ];
 
-  const LEGACY_TARGETS: Option<string>[] = [
-    { id: "bridge_alpha", label: "Connection: Alpha" },
-    { id: "bridge_beta", label: "Connection: Beta" },
-    { id: "conn_local_a", label: "Connection: Local Runtime A" },
-    { id: "conn_remote_staging", label: "Connection: Remote Proxy (Staging)" },
-  ];
+  const LEGACY_TARGET_IDS = new Set(["bridge_alpha", "bridge_beta", "conn_local_a", "conn_remote_staging"]);
 
   const DEFAULT_PRESET_ID = "preset_default";
-  const INITIAL_PRESETS: PersonaPreset[] = [
+  const BUILTIN_PRESETS: PersonaPreset[] = [
     {
       id: DEFAULT_PRESET_ID,
       name: "Default",
       text: "You are MCP Synapse. Be accurate, neutral, and helpful. If requirements are ambiguous, ask concise clarifying questions. Avoid revealing secrets and avoid provider-specific claims unless explicitly given.",
     },
     {
-      id: "preset_analyst",
-      name: "Analyst",
-      text: "You are an analytical assistant. Explain assumptions, trade-offs, and risks. Prefer structured bullet points. Provide actionable next steps and keep language precise.",
+      id: "preset_production_operator",
+      name: "Production Operator",
+      text: "You are a production-focused MCP operations assistant. Prioritize reliability, deterministic behavior, and low-risk execution. Start with the smallest safe scope and confirm assumptions before taking action. Prefer explicit checks over inference. For runtime, config, or data changes, state preconditions, expected outcome, and rollback path. Never claim success without observable evidence. If results are ambiguous, return REVALIDATE with exact missing proof. Avoid broad audits unless requested. Keep outputs concise and ordered by operational impact.",
     },
     {
-      id: "preset_concise",
-      name: "Concise",
-      text: "You are a concise assistant. Answer directly, prefer short bullet points, and avoid extra explanation unless asked.",
+      id: "preset_debug_investigator",
+      name: "Debug Investigator",
+      text: "You are a debugging investigator for UI, wiring, and runtime issues. Reproduce in narrow scope, isolate failing surface, and map symptom to trigger to probable source. Prefer deterministic probes with exact file paths and expected versus observed behavior. Distinguish static confidence from runtime-confirmed evidence. If runtime proof is missing, return REVALIDATE. Propose the smallest patch that resolves the issue without redesign. Call out regression risk and side effects explicitly. Keep language concrete and action-oriented.",
+    },
+    {
+      id: "preset_cost_usage_analyst",
+      name: "Cost & Usage Analyst",
+      text: "You are a cost and usage analysis assistant for multi-provider LLM systems. Separate measured values from estimates. If cost is inferred, state assumptions and confidence clearly. Highlight variance drivers such as provider pricing model, token accounting differences, retries, streaming behavior, and caching effects. Present concise findings suitable for release planning. Prioritize transparency and trust: reproducible formulas, clear attribution by provider and model, and practical drift alerts. Avoid overpromising precision where provider metadata is incomplete.",
+    },
+    {
+      id: "preset_security_compliance_guard",
+      name: "Security & Compliance Guard",
+      text: "You are a security-first assistant for local and BYOK AI tooling. Enforce least-privilege, secret hygiene, and auditability. Treat credentials and sensitive paths as high-risk inputs. Recommend secure defaults, explicit error handling, and non-leaky UX messages. Do not make unsupported legal or compliance claims. For sensitive flows provide threat surface, abuse path, mitigation, and residual risk. Prefer incremental hardening over disruptive redesign. If risk closure is uncertain, return BLOCKER or REVALIDATE with exact missing verification.",
     },
   ];
+  const BUILTIN_PRESET_IDS = new Set(BUILTIN_PRESETS.map((p) => p.id));
+  const INITIAL_PRESETS: PersonaPreset[] = BUILTIN_PRESETS;
 
   let selectedPersonaId = $state<string>(DEFAULT_PRESET_ID);
-  let selectedTargetId = $state<string>("bridge_alpha");
-  let targetOptions = $state<Option<string>[]>(LEGACY_TARGETS);
+  let selectedTargetId = $state<string>("");
+  let targetOptions = $state<Option<string>[]>([]);
   let applied = $state<AppliedRow[]>([]);
 
   let presets = $state<PersonaPreset[]>(INITIAL_PRESETS);
@@ -124,9 +131,9 @@
   function ensureTargetOptionExists(optionsIn: Option<string>[], targetId: string) {
     const cleanTargetId = String(targetId || "").trim();
     if (!cleanTargetId) return optionsIn;
+    if (LEGACY_TARGET_IDS.has(cleanTargetId)) return optionsIn;
     if (optionsIn.some((o) => o.id === cleanTargetId)) return optionsIn;
-    const legacyLabel = LEGACY_TARGETS.find((o) => o.id === cleanTargetId)?.label;
-    return [...optionsIn, { id: cleanTargetId, label: legacyLabel || `Connection: ${cleanTargetId}` }];
+    return [...optionsIn, { id: cleanTargetId, label: `Connection: ${cleanTargetId}` }];
   }
 
   function personaLabelForId(personaId: string) {
@@ -138,7 +145,7 @@
   function targetLabelForId(targetId: string) {
     const fromTargets = targetOptions.find((o) => o.id === targetId)?.label;
     if (fromTargets) return fromTargets;
-    return labelForOption(LEGACY_TARGETS, targetId);
+    return `Connection: ${targetId}`;
   }
 
   function bannerClass(kind: BannerKind) {
@@ -180,13 +187,30 @@
   }
 
   function normalizeState(state: PersonaState | null | undefined) {
-    const fallbackPreset = INITIAL_PRESETS[0] ?? { id: DEFAULT_PRESET_ID, name: "Default", text: "" };
     const presetsIn = Array.isArray(state?.presets) ? state!.presets : [];
-    const normalizedPresets = presetsIn.length > 0
-      ? presetsIn
-          .filter((p) => p && typeof p.id === "string" && typeof p.name === "string")
-          .map((p) => ({ id: p.id, name: p.name, text: typeof p.text === "string" ? p.text : "" }))
-      : [fallbackPreset];
+    const sanitizedIncoming = presetsIn
+      .filter((p) => p && typeof p.id === "string" && typeof p.name === "string")
+      .map((p) => ({
+        id: String(p.id || "").trim(),
+        name: String(p.name || "").trim(),
+        text: typeof p.text === "string" ? p.text : "",
+      }))
+      .filter((p) => p.id.length > 0 && p.name.length > 0);
+    const presetById = new Map<string, PersonaPreset>();
+    for (const preset of sanitizedIncoming) {
+      if (!presetById.has(preset.id)) presetById.set(preset.id, preset);
+    }
+    for (const builtin of BUILTIN_PRESETS) {
+      if (!presetById.has(builtin.id)) presetById.set(builtin.id, builtin);
+    }
+    const normalizedPresets: PersonaPreset[] = [];
+    for (const builtin of BUILTIN_PRESETS) {
+      const existing = presetById.get(builtin.id);
+      if (existing) normalizedPresets.push(existing);
+    }
+    for (const preset of sanitizedIncoming) {
+      if (!BUILTIN_PRESET_IDS.has(preset.id)) normalizedPresets.push(preset);
+    }
     const selectedPreset = String(state?.selected_preset_id || normalizedPresets[0]?.id || DEFAULT_PRESET_ID);
     const appliedRowsIn = Array.isArray(state?.applied_rows) ? state!.applied_rows : [];
     const normalizedApplied: AppliedRow[] = appliedRowsIn
@@ -205,7 +229,7 @@
         if (normalizedPresets.some((p) => p.id === candidate)) return candidate;
         return String(normalizedPresets[0]?.id || DEFAULT_PRESET_ID);
       })(),
-      selectedTargetId: String(state?.selected_target_id || "bridge_alpha"),
+      selectedTargetId: String(state?.selected_target_id || "").trim(),
       presets: normalizedPresets,
       selectedPresetId: selectedPreset,
       applied: normalizedApplied,
@@ -267,7 +291,7 @@
     try {
       const result = await uiRunDeduped(PERSONA_TARGETS_CACHE_KEY, async () => await dispatchInvoke({ op: "connections.list" }));
       if (!result.ok) {
-        targetOptions = ensureTargetOptionExists(LEGACY_TARGETS, selectedTargetId);
+        targetOptions = ensureTargetOptionExists(targetOptions, selectedTargetId);
         return;
       }
       const rows = Array.isArray(result.connections) ? result.connections : [];
@@ -280,11 +304,18 @@
           const portText = Number.isFinite(Number(row.port)) ? `:${Number(row.port)}` : "";
           return { id, label: `${name} (${status}${portText})` };
         });
-      const normalizedTargets = mapped.length > 0 ? mapped : LEGACY_TARGETS;
-      targetOptions = ensureTargetOptionExists(normalizedTargets, selectedTargetId);
+      const normalizedTargets = mapped;
+      if (normalizedTargets.length > 0) {
+        if (!selectedTargetId || !normalizedTargets.some((o) => o.id === selectedTargetId)) {
+          selectedTargetId = normalizedTargets[0].id;
+        }
+        targetOptions = normalizedTargets;
+      } else {
+        targetOptions = ensureTargetOptionExists([], selectedTargetId);
+      }
       uiCacheSet(PERSONA_TARGETS_CACHE_KEY, targetOptions);
     } catch {
-      targetOptions = ensureTargetOptionExists(LEGACY_TARGETS, selectedTargetId);
+      targetOptions = ensureTargetOptionExists(targetOptions, selectedTargetId);
     }
   }
 
@@ -454,8 +485,12 @@
     if (cachedState) applyHydratedState(cachedState);
     if (cachedState) refreshDelayMs = 90;
     const cachedTargets = uiCacheGet<Option<string>[]>(PERSONA_TARGETS_CACHE_KEY, PERSONA_CACHE_TTL_MS);
-    if (cachedTargets && cachedTargets.length > 0) {
-      targetOptions = ensureTargetOptionExists(cachedTargets, selectedTargetId);
+    const sanitizedCachedTargets = (cachedTargets || []).filter((o) => {
+      const id = String(o?.id || "").trim();
+      return id.length > 0 && !LEGACY_TARGET_IDS.has(id);
+    });
+    if (sanitizedCachedTargets.length > 0) {
+      targetOptions = ensureTargetOptionExists(sanitizedCachedTargets, selectedTargetId);
       refreshDelayMs = 90;
     }
     window.setTimeout(() => {

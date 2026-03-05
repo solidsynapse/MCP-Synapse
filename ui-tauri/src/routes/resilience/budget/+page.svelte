@@ -416,6 +416,9 @@
   <div class="ui-card ui-pad-md">
     <div class="ui-title">Add budget guard</div>
     <div class="ui-subtitle mt-1">Set a daily limit and apply.</div>
+    <div class="mt-2 text-[11px]" style="color: var(--text-muted);">
+      Alert guidance: >=75% shows warning and >=90% shows critical in Dashboard health alerts.
+    </div>
 
     <div class="mt-4 grid gap-3 lg:grid-cols-3">
       <div class="lg:col-span-1">

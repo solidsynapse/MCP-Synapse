@@ -177,6 +177,7 @@
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
       <div class="ui-subtitle">Configure persisted optimization toggles.</div>
+      <div class="mt-1 text-[11px]" style="color: var(--text-muted);">Toggle effects are applied to new requests after state is saved.</div>
     </div>
   </div>
 

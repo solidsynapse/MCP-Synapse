@@ -13,12 +13,13 @@ import sys
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
 
 from src.config.manager import ConfigManager
 from src.data.credentials import CredentialManager
+from src.data.vault import VaultManager
 from src.data.usage_db import UsageDatabase
 from src.mcp_server.agent_server import MCPAgentServer
 from src.mcp_server.pipeline_v1 import (
@@ -44,10 +45,12 @@ class ServerManager:
         config: ConfigManager | None = None,
         creds: CredentialManager | None = None,
         usage_db: UsageDatabase | None = None,
+        vault: VaultManager | None = None,
     ) -> None:
         self._config = config or ConfigManager()
         self._creds = creds or CredentialManager()
         self._usage_db = usage_db or UsageDatabase()
+        self._vault = vault or VaultManager()
         self.active_agents: Dict[str, MCPAgentServer] = {}
         self._request_dedup_cache: dict[str, dict[str, object]] = {}
 
@@ -304,6 +307,72 @@ class ServerManager:
                 if pid > 0:
                     connection["runtime_pid"] = int(pid)
         return {"ok": True, "errors": [], "warnings": [], "connections": connections}
+
+    def vault_list(self) -> dict[str, object]:
+        try:
+            entries = self._vault.list_entries()
+            return {"ok": True, "errors": [], "warnings": [], "data": {"entries": entries}}
+        except Exception as exc:
+            return {"ok": False, "errors": [f"Vault storage unavailable: {exc}"], "warnings": [], "data": {}}
+
+    def vault_create(self, params: dict) -> dict[str, object]:
+        entry = params.get("entry") if isinstance(params.get("entry"), dict) else {}
+        name = entry.get("name") if isinstance(entry, dict) else None
+        entry_type = entry.get("type") if isinstance(entry, dict) else None
+        secret = entry.get("secret") if isinstance(entry, dict) else None
+        import_mode = entry.get("import_mode") if isinstance(entry, dict) else None
+        try:
+            created = self._vault.create_entry(
+                str(name or ""),
+                str(entry_type or ""),
+                str(secret or ""),
+                str(import_mode or "").strip() or None,
+            )
+            return {"ok": True, "errors": [], "warnings": [], "data": {"entry": created}}
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)], "warnings": [], "data": {}}
+        except Exception as exc:
+            return {"ok": False, "errors": [f"Vault storage unavailable: {exc}"], "warnings": [], "data": {}}
+
+    def vault_read(self, params: dict) -> dict[str, object]:
+        entry_id = str(params.get("entry_id") or "").strip()
+        try:
+            secret = self._vault.read_secret(entry_id)
+            return {"ok": True, "errors": [], "warnings": [], "data": {"secret": secret}}
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)], "warnings": [], "data": {}}
+        except Exception as exc:
+            return {"ok": False, "errors": [f"Vault storage unavailable: {exc}"], "warnings": [], "data": {}}
+
+    def vault_delete(self, params: dict) -> dict[str, object]:
+        entry_id = str(params.get("entry_id") or "").strip()
+        try:
+            self._vault.delete_entry(entry_id)
+            return {"ok": True, "errors": [], "warnings": [], "data": {"id": entry_id}}
+        except ValueError as exc:
+            return {"ok": False, "errors": [str(exc)], "warnings": [], "data": {}}
+        except Exception as exc:
+            return {"ok": False, "errors": [f"Vault storage unavailable: {exc}"], "warnings": [], "data": {}}
+
+    def vault_pick_credentials_path(self) -> dict[str, object]:
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                root.attributes("-topmost", True)
+            except Exception:
+                pass
+            picked = filedialog.askopenfilename(
+                title="Select credentials file",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            )
+            root.destroy()
+            return {"ok": True, "errors": [], "warnings": [], "data": {"path": str(picked or "")}}
+        except Exception:
+            return {"ok": False, "errors": ["File picker unavailable"], "warnings": [], "data": {}}
 
     @staticmethod
     def _persona_now_utc() -> str:
@@ -917,36 +986,72 @@ class ServerManager:
             {"label": "Active Bridges count", "value": str(active_bridges), "icon": "B"},
         ]
 
+        known_provider_ids = (
+            "vertex",
+            "openai",
+            "anthropic",
+            "groq",
+            "lmstudio",
+            "ollama",
+            "huggingface",
+        )
+
+        def provider_label_from_row(row: dict[str, object]) -> str:
+            raw = str(row.get("provider") or "").strip().lower()
+            if raw:
+                for provider_id in known_provider_ids:
+                    if raw == provider_id or raw.startswith(provider_id):
+                        return provider_id
+            return "unknown"
+
         recent_requests: list[dict[str, object]] = []
-        for r in rows[:12]:
+        for r in rows[:30]:
             status = "Success" if str(r.get("status") or "") == "success" else "Error"
             tokens_in = int(r.get("tokens_input") or 0)
             tokens_out = int(r.get("tokens_output") or 0)
             recent_requests.append(
                 {
                     "time": str(r.get("timestamp") or ""),
+                    "request_id": str(r.get("request_id") or ""),
                     "status": status,
-                    "provider": str(r.get("provider") or r.get("agent_name") or "unknown"),
+                    "connection": str(r.get("agent_name") or "").strip(),
+                    "provider": provider_label_from_row(r),
                     "latency": f"{int(r.get('latency_ms') or 0)}ms",
                     "tokens": f"{tokens_in} / {tokens_out}",
                     "cost": self._format_usd(float(r.get("cost_usd") or 0.0)),
                 }
             )
 
+        connection_name_by_id: dict[str, str] = {}
+        for connection in connections:
+            if not isinstance(connection, dict):
+                continue
+            cid = str(connection.get("id") or "").strip()
+            if not cid:
+                continue
+            name = str(connection.get("connection_name") or "").strip()
+            connection_name_by_id[cid] = name or cid
+
         top_expensive: list[dict[str, object]] = []
         sorted_by_cost = sorted(rows, key=lambda r: float(r.get("cost_usd") or 0.0), reverse=True)
         for r in sorted_by_cost[:5]:
             req_id = str(r.get("request_id") or r.get("id") or "n/a")
+            scope_id = str(r.get("agent_id") or "").strip()
+            connection_name = connection_name_by_id.get(scope_id, str(r.get("agent_name") or "").strip())
+            provider_name = provider_label_from_row(r)
             top_expensive.append(
                 {
                     "id": req_id,
+                    "time": str(r.get("timestamp") or ""),
+                    "connection": connection_name,
+                    "provider": provider_name,
                     "cost": self._format_usd(float(r.get("cost_usd") or 0.0)),
                 }
             )
 
         provider_costs: dict[str, float] = defaultdict(float)
         for r in rows:
-            provider = str(r.get("provider") or r.get("agent_name") or "unknown").strip() or "unknown"
+            provider = provider_label_from_row(r)
             provider_costs[provider] += float(r.get("cost_usd") or 0.0)
         sorted_provider_costs = sorted(provider_costs.items(), key=lambda kv: kv[1], reverse=True)
         palette = ["var(--accent-base)", "#3b82f6", "#6366f1", "#64748b", "#14b8a6"]
@@ -966,8 +1071,12 @@ class ServerManager:
             day = ts[:10] if len(ts) >= 10 else "unknown"
             daily_costs[day] += float(r.get("cost_usd") or 0.0)
         trend_data: list[dict[str, object]] = []
-        for day in sorted(daily_costs.keys())[-10:]:
-            trend_data.append({"label": day, "valueFormatted": self._format_usd(daily_costs[day])})
+        # Always emit a contiguous 30-day series so the dashboard trend genuinely
+        # represents "Last 30 Days" instead of a sparse subset of active days.
+        today_date = datetime.now(timezone.utc).date()
+        day_keys = [(today_date - timedelta(days=offset)).isoformat() for offset in range(29, -1, -1)]
+        for day in day_keys:
+            trend_data.append({"label": day, "valueFormatted": self._format_usd(float(daily_costs.get(day, 0.0)))})
 
         quick_alerts: list[dict[str, object]] = []
         budget_alerts: list[dict[str, object]] = []
@@ -975,15 +1084,6 @@ class ServerManager:
         today_key = datetime.now(timezone.utc).date().isoformat()
         daily_cost_by_scope: dict[str, float] = defaultdict(float)
         daily_tokens_by_scope: dict[str, int] = defaultdict(int)
-        connection_name_by_id: dict[str, str] = {}
-        for connection in connections:
-            if not isinstance(connection, dict):
-                continue
-            cid = str(connection.get("id") or "").strip()
-            if not cid:
-                continue
-            name = str(connection.get("connection_name") or "").strip()
-            connection_name_by_id[cid] = name or cid
         for r in rows:
             if not self._matches_utc_day(r.get("timestamp"), today_key):
                 continue
@@ -1018,24 +1118,25 @@ class ServerManager:
             else:
                 continue
             utilization = (consumed / limit) * 100.0
-            if utilization < 80.0:
+            if utilization < 75.0:
                 continue
-            level = "danger" if utilization >= 95.0 else "warning"
+            level = "critical" if utilization >= 90.0 else "warning"
             scope_label = "All Bridges" if scope_id == "all" else connection_name_by_id.get(scope_id, scope_id)
             text = (
-                f"Budget threshold {'critical' if level == 'danger' else 'nearing'}: "
-                f"{scope_label} ({utilization:.1f}% of {unit_label})"
+                f"Budget threshold {'critical' if level == 'critical' else 'warning'}: {scope_label}"
             )
+            detail = f"Current usage: {utilization:.1f}% of {unit_label}"
             budget_alerts.append(
                 {
                     "level": level,
                     "text": text,
+                    "detail": detail,
                     "_utilization": utilization,
                 }
             )
         budget_alerts.sort(
             key=lambda row: (
-                0 if str(row.get("level") or "") == "danger" else 1,
+                0 if str(row.get("level") or "") == "critical" else 1,
                 -float(row.get("_utilization") or 0.0),
                 str(row.get("text") or ""),
             )
@@ -1043,10 +1144,19 @@ class ServerManager:
         for row in budget_alerts:
             row.pop("_utilization", None)
 
-        if success_rate < 95.0 and total_requests > 0:
-            quick_alerts.append({"level": "warning", "text": f"Success rate below target: {success_rate:.1f}%"})
+        if total_requests > 0 and success_rate < 95.0:
+            success_level = "critical" if success_rate < 85.0 else "warning"
+            success_target = "85%" if success_level == "critical" else "95%"
+            quick_alerts.append(
+                {
+                    "level": success_level,
+                    "text": f"Success rate {'critical' if success_level == 'critical' else 'warning'} (<{success_target})",
+                    "detail": f"Current: {success_rate:.1f}%",
+                }
+            )
         if avg_latency > 1000:
-            quick_alerts.append({"level": "warning", "text": f"High average latency: {avg_latency}ms"})
+            latency_level = "critical" if avg_latency >= 1800 else "warning"
+            quick_alerts.append({"level": latency_level, "text": f"High average latency: {avg_latency}ms"})
         quick_alerts.extend(budget_alerts)
         if total_requests == 0:
             quick_alerts.append({"level": "info", "text": "No usage rows recorded yet."})
@@ -1168,9 +1278,121 @@ class ServerManager:
                 "warnings": [],
                 "error_code": "invalid_settings_state",
             }
+        if port_mode == "manual":
+            port_min_raw = str(state_payload.get("port_min") or "").strip()
+            port_max_raw = str(state_payload.get("port_max") or "").strip()
+            try:
+                port_min_int = int(port_min_raw)
+            except Exception:
+                return {
+                    "ok": False,
+                    "errors": ["port_min must be integer when port_mode=manual"],
+                    "warnings": [],
+                    "error_code": "invalid_settings_state",
+                }
+            try:
+                port_max_int = int(port_max_raw)
+            except Exception:
+                return {
+                    "ok": False,
+                    "errors": ["port_max must be integer when port_mode=manual"],
+                    "warnings": [],
+                    "error_code": "invalid_settings_state",
+                }
+            if port_min_int < 1 or port_min_int > 65535:
+                return {
+                    "ok": False,
+                    "errors": ["port_min must be between 1 and 65535"],
+                    "warnings": [],
+                    "error_code": "invalid_settings_state",
+                }
+            if port_max_int < 1 or port_max_int > 65535:
+                return {
+                    "ok": False,
+                    "errors": ["port_max must be between 1 and 65535"],
+                    "warnings": [],
+                    "error_code": "invalid_settings_state",
+                }
+            if port_min_int > port_max_int:
+                return {
+                    "ok": False,
+                    "errors": ["port_min must be <= port_max"],
+                    "warnings": [],
+                    "error_code": "invalid_settings_state",
+                }
         canonical = self._canonicalize_settings_state(state_payload)
         persisted = self._config.set_settings_state(canonical)
         return {"ok": True, "errors": [], "warnings": [], "result": persisted}
+
+    def _find_available_connection_port(self, start: int, end: int) -> int:
+        if int(start) > int(end):
+            raise RuntimeError("invalid port range")
+        config_data = self._config._read_config()
+        used_ports: set[int] = set()
+        for agent in config_data.get("agents", []) or []:
+            if not isinstance(agent, dict):
+                continue
+            try:
+                used_ports.add(int(agent.get("port")))
+            except Exception:
+                continue
+        for connection in config_data.get("connections", []) or []:
+            if not isinstance(connection, dict):
+                continue
+            try:
+                used_ports.add(int(connection.get("port")))
+            except Exception:
+                continue
+        for port in range(int(start), int(end) + 1):
+            if port in used_ports:
+                continue
+            endpoint_in_use, _, _ = self._probe_sse_endpoint(port)
+            if endpoint_in_use:
+                continue
+            return port
+        raise RuntimeError("no available ports in requested range")
+
+    def _resolve_connection_port_from_settings(self) -> tuple[int | None, list[str]]:
+        state = self._canonicalize_settings_state(self._config.get_settings_state())
+        port_mode = str(state.get("port_mode") or "auto").strip()
+        defaults = self._config.default_settings_state()
+        if port_mode != "manual":
+            try:
+                default_min = int(str(defaults.get("port_min") or "5000").strip())
+                default_max = int(str(defaults.get("port_max") or "6000").strip())
+                return self._find_available_connection_port(default_min, default_max), []
+            except Exception:
+                return None, ["no available ports in default range (5000-6000)"]
+
+        port_min_raw = str(state.get("port_min") or "").strip()
+        port_max_raw = str(state.get("port_max") or "").strip()
+        try:
+            port_min = int(port_min_raw)
+            port_max = int(port_max_raw)
+        except Exception:
+            return None, ["settings manual port range is invalid"]
+        if port_min < 1 or port_min > 65535 or port_max < 1 or port_max > 65535:
+            return None, ["settings manual port range must be between 1 and 65535"]
+        if port_min > port_max:
+            return None, ["settings manual port range requires port_min <= port_max"]
+        try:
+            return self._find_available_connection_port(start=port_min, end=port_max), []
+        except RuntimeError:
+            return None, [f"no available ports in configured manual range ({port_min}-{port_max})"]
+
+    def _resolve_credentials_path(self, raw_value: str) -> tuple[str, list[str]]:
+        value = str(raw_value or "").strip()
+        if not value:
+            return "", []
+        if not value.lower().startswith("vault://"):
+            return value, []
+        try:
+            resolved = self._vault.resolve_credentials_reference(value)
+            return str(resolved or "").strip(), []
+        except ValueError as exc:
+            return "", [str(exc)]
+        except Exception:
+            return "", ["vault credentials resolution failed"]
 
     def _build_connection_schema_hint(self, provider_id: str) -> dict[str, object]:
         provider = str(provider_id or "").strip()
@@ -1208,7 +1430,7 @@ class ServerManager:
                 "required": False,
                 "kind": "text",
                 "placeholder": r"C:\path\to\credentials.json",
-                "help": "Optional path to a local credential file (core-owned).",
+                "help": "Optional path to a local credentials file used by the core runtime.",
                 "section": "advanced",
             },
         ]
@@ -1242,6 +1464,88 @@ class ServerManager:
                 },
             )
             suggested_defaults["location"] = "us-central1"
+
+        if provider == "bedrock":
+            for f in fields:
+                if isinstance(f, dict) and str(f.get("id") or "").strip() == "credentials_path":
+                    f["required"] = False
+                    f["help"] = "AWS credentials file path (used when Credential source = File)."
+                    break
+            fields.insert(
+                2,
+                {
+                    "id": "aws_region",
+                    "label": "AWS region",
+                    "required": True,
+                    "kind": "text",
+                    "placeholder": "Example: us-east-1",
+                    "help": "AWS region for Bedrock runtime requests.",
+                    "section": "common",
+                },
+            )
+            fields.insert(
+                3,
+                {
+                    "id": "credential_source",
+                    "label": "Credential source",
+                    "required": True,
+                    "kind": "select",
+                    "options": [
+                        {"value": "file", "label": "File"},
+                        {"value": "manual", "label": "Manual"},
+                        {"value": "api_key", "label": "API Key"},
+                    ],
+                    "placeholder": "file",
+                    "help": "File uses credentials_path. Manual uses access key + secret key. API Key uses Bedrock bearer token.",
+                    "section": "advanced",
+                },
+            )
+            fields.append(
+                {
+                    "id": "aws_access_key_id",
+                    "label": "AWS Access Key ID",
+                    "required": False,
+                    "kind": "text",
+                    "placeholder": "Example: AKIA...",
+                    "help": "Required when Credential source is Manual.",
+                    "section": "advanced",
+                },
+            )
+            fields.append(
+                {
+                    "id": "aws_secret_access_key",
+                    "label": "AWS Secret Access Key",
+                    "required": False,
+                    "kind": "password",
+                    "placeholder": "Enter AWS secret access key",
+                    "help": "Required when Credential source is Manual.",
+                    "section": "advanced",
+                },
+            )
+            fields.append(
+                {
+                    "id": "aws_session_token",
+                    "label": "AWS Session Token",
+                    "required": False,
+                    "kind": "text",
+                    "placeholder": "Optional (temporary credentials)",
+                    "help": "Optional; required only for temporary session credentials.",
+                    "section": "advanced",
+                },
+            )
+            fields.append(
+                {
+                    "id": "bedrock_api_key",
+                    "label": "Bedrock API Key",
+                    "required": False,
+                    "kind": "password",
+                    "placeholder": "ABSK...",
+                    "help": "Required when Credential source is API Key.",
+                    "section": "advanced",
+                },
+            )
+            suggested_defaults["aws_region"] = "us-east-1"
+            suggested_defaults["credential_source"] = "file"
 
         if not provider:
             notes.append("Select a provider to see core-driven field requirements.")
@@ -1292,6 +1596,37 @@ class ServerManager:
                 if not value:
                     errors.append(f"{field_id} is required")
 
+        if provider_id == "vertex":
+            project_id = str(payload.get("project_id") or "").strip()
+            if project_id:
+                # GCP project IDs are 6-30 chars, lowercase letters/digits/hyphen,
+                # start with a letter, and end with letter/digit.
+                if not re.match(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$", project_id):
+                    errors.append("project_id format is invalid for Vertex")
+        elif provider_id == "bedrock":
+            aws_region = str(payload.get("aws_region") or "").strip()
+            if not aws_region:
+                errors.append("aws_region is required")
+            elif not re.match(r"^[a-z]{2}-[a-z]+-\d+$", aws_region):
+                errors.append("aws_region format is invalid for Bedrock")
+            credential_source = str(payload.get("credential_source") or "file").strip().lower()
+            if credential_source not in ("file", "manual", "api_key"):
+                errors.append("credential_source must be one of: file, manual, api_key")
+            if credential_source == "file":
+                if not credentials_path:
+                    errors.append("credentials_path is required when credential_source=file")
+            elif credential_source == "manual":
+                access_key = str(payload.get("aws_access_key_id") or "").strip()
+                secret_key = str(payload.get("aws_secret_access_key") or "").strip()
+                if not access_key:
+                    errors.append("aws_access_key_id is required when credential_source=manual")
+                if not secret_key:
+                    errors.append("aws_secret_access_key is required when credential_source=manual")
+            else:
+                bedrock_api_key = str(payload.get("bedrock_api_key") or "").strip()
+                if not bedrock_api_key:
+                    errors.append("bedrock_api_key is required when credential_source=api_key")
+
         if endpoint_provided and not endpoint:
             errors.append("endpoint must be non-empty if provided")
         if endpoint:
@@ -1305,10 +1640,20 @@ class ServerManager:
                 if any(token in lower for token in placeholder_tokens):
                     warnings.append("endpoint appears to be a placeholder")
 
-        if credentials_provided and not credentials_path:
+        if credentials_provided and not credentials_path and not (
+            provider_id == "bedrock"
+            and str(payload.get("credential_source") or "file").strip().lower() in ("manual", "api_key")
+        ):
             errors.append("credentials_path must be non-empty if provided")
-        if credentials_path and not Path(credentials_path).exists():
-            errors.append("credentials_path does not exist")
+        if credentials_path and not (
+            provider_id == "bedrock"
+            and str(payload.get("credential_source") or "file").strip().lower() in ("manual", "api_key")
+        ):
+            resolved_credentials_path, resolve_errors = self._resolve_credentials_path(credentials_path)
+            if resolve_errors:
+                errors.extend(resolve_errors)
+            elif not resolved_credentials_path or not Path(resolved_credentials_path).exists():
+                errors.append("credentials_path does not exist")
 
         normalized_payload: dict[str, str] = {
             "connection_name": connection_name,
@@ -1331,6 +1676,36 @@ class ServerManager:
                 value = str(payload.get(field_id) or "").strip()
                 if value:
                     normalized_payload[field_id] = value
+        if provider_id == "bedrock":
+            credential_source = str(payload.get("credential_source") or "file").strip().lower()
+            if credential_source not in ("file", "manual", "api_key"):
+                credential_source = "file"
+            normalized_payload["credential_source"] = credential_source
+            if credential_source == "manual":
+                normalized_payload.pop("credentials_path", None)
+                access_key = str(payload.get("aws_access_key_id") or "").strip()
+                secret_key = str(payload.get("aws_secret_access_key") or "").strip()
+                session_token = str(payload.get("aws_session_token") or "").strip()
+                if access_key:
+                    normalized_payload["aws_access_key_id"] = access_key
+                if secret_key:
+                    normalized_payload["aws_secret_access_key"] = secret_key
+                if session_token:
+                    normalized_payload["aws_session_token"] = session_token
+                normalized_payload.pop("bedrock_api_key", None)
+            elif credential_source == "api_key":
+                normalized_payload.pop("credentials_path", None)
+                normalized_payload.pop("aws_access_key_id", None)
+                normalized_payload.pop("aws_secret_access_key", None)
+                normalized_payload.pop("aws_session_token", None)
+                bedrock_api_key = str(payload.get("bedrock_api_key") or "").strip()
+                if bedrock_api_key:
+                    normalized_payload["bedrock_api_key"] = bedrock_api_key
+            else:
+                normalized_payload.pop("aws_access_key_id", None)
+                normalized_payload.pop("aws_secret_access_key", None)
+                normalized_payload.pop("aws_session_token", None)
+                normalized_payload.pop("bedrock_api_key", None)
 
         return {
             "ok": len(errors) == 0,
@@ -1351,6 +1726,15 @@ class ServerManager:
             }
 
         normalized = preflight.get("normalized_payload") or {}
+        resolved_port, port_errors = self._resolve_connection_port_from_settings()
+        if port_errors:
+            return {
+                "ok": False,
+                "errors": port_errors,
+                "warnings": preflight.get("warnings", []),
+                "normalized_payload": normalized,
+                "connections": self._config.list_connections(),
+            }
         known_keys = {"connection_name", "provider_id", "model_id", "endpoint", "credentials_path"}
         options: dict[str, object] = {}
         if isinstance(normalized, dict):
@@ -1364,6 +1748,7 @@ class ServerManager:
             model_id=str(normalized.get("model_id") or ""),
             endpoint=str(normalized.get("endpoint") or "") or None,
             credentials_path=str(normalized.get("credentials_path") or "") or None,
+            port=resolved_port,
             options=options or None,
         )
 
@@ -1798,6 +2183,40 @@ class ServerManager:
             "connections": self._config.list_connections(),
         }
 
+    def stop_all_connections(self) -> dict[str, object]:
+        errors: list[str] = []
+        warnings: list[str] = []
+        for connection in self._config.list_connections():
+            if not isinstance(connection, dict):
+                continue
+            connection_id = str(connection.get("id") or "").strip()
+            if not connection_id:
+                continue
+            port = self._connection_port(connection)
+            status = str(connection.get("status") or "").strip().lower()
+            runtime_pid_raw = connection.get("runtime_pid")
+            runtime_pid = int(runtime_pid_raw) if isinstance(runtime_pid_raw, int) or str(runtime_pid_raw).isdigit() else 0
+            should_stop = (
+                status == "running"
+                or (runtime_pid > 0 and self._runtime_proc_alive(runtime_pid))
+                or (port is not None and self._endpoint_reachable(port))
+            )
+            if not should_stop:
+                continue
+            result = self.stop_connection({"connection_id": connection_id})
+            if result.get("ok"):
+                for warning in result.get("warnings", []) or []:
+                    warnings.append(f"{connection_id}: {warning}")
+                continue
+            message = "; ".join([str(e) for e in result.get("errors", []) or []]) or "stop failed"
+            errors.append(f"{connection_id}: {message}")
+        return {
+            "ok": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "connections": self._config.list_connections(),
+        }
+
     def delete_connection(self, payload: dict) -> dict[str, object]:
         connection_id = str(payload.get("connection_id") or "").strip()
         if not connection_id:
@@ -1805,6 +2224,17 @@ class ServerManager:
                 "ok": False,
                 "errors": ["connection_id is required"],
                 "warnings": [],
+                "connections": self._config.list_connections(),
+            }
+
+        stop_result = self.stop_connection({"connection_id": connection_id})
+        if not stop_result.get("ok"):
+            stop_errors = stop_result.get("errors", []) or []
+            message = "; ".join([str(e) for e in stop_errors]) if stop_errors else "runtime stop failed before delete"
+            return {
+                "ok": False,
+                "errors": [f"delete failed: {message}"],
+                "warnings": stop_result.get("warnings", []) or [],
                 "connections": self._config.list_connections(),
             }
 
@@ -1820,7 +2250,7 @@ class ServerManager:
         return {
             "ok": True,
             "errors": [],
-            "warnings": [],
+            "warnings": stop_result.get("warnings", []) or [],
             "connections": self._config.list_connections(),
         }
 
@@ -2258,6 +2688,9 @@ class ServerManager:
             or options_map.get("credentials_path")
             or ""
         ).strip()
+        resolved_credentials_path, resolve_errors = self._resolve_credentials_path(credentials_path)
+        if resolve_errors:
+            raise ValueError("; ".join(resolve_errors))
 
         if provider_id == "vertex" and not project_id:
             raise ValueError("project_id is required")
@@ -2268,7 +2701,7 @@ class ServerManager:
             location=location,
             provider_id=provider_id,
             model_id=model_id,
-            credentials_path=credentials_path,
+            credentials_path=resolved_credentials_path,
             price_per_1m_input=0.0,
             price_per_1m_output=0.0,
             streaming=False,

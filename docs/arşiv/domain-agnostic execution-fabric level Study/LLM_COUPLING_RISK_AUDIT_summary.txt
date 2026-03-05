@@ -1,0 +1,39 @@
+﻿LLM-COUPLING RISK AUDIT (core-embedded points + technical debt forecast)
+
+Overall assessment:
+- Current architecture is provider-agnostic at adapter seam level, but not yet domain-agnostic execution-fabric level.
+- Core still carries LLM-first assumptions (prompt/text/tokens/cost/model/provider) in contracts, schema, and dashboard metrics.
+- Policy modules (persona/budget/interceptor/optimizations) are mostly state-management surfaces; enforcement/hook wiring is partial.
+
+Risk matrix (impact x probability x effort):
+1) Core request/response contracts are LLM-text specific -> Impact High, Probability High, Effort L
+2) Policy states not wired to deterministic hook chain (budget/interceptor/optimizations) -> Impact High, Probability High, Effort M-L
+3) Provider-specific branching in core (vertex schema + runtime project_id gate) -> Impact Medium-High, Probability High, Effort M
+4) Provider defaults and model allowlist tied to Gemini/Vertex assumptions -> Impact Medium, Probability Medium-High, Effort M
+5) Dispatcher op-chain monolith (no plugin registry/capability routing) -> Impact Medium, Probability High, Effort M
+6) Observability schema fixed to LLM economics (tokens/cost/provider/model) -> Impact Medium, Probability Medium, Effort M
+7) SSOT path drift (architecture doc location mismatch) -> Impact Medium (governance), Probability High, Effort S
+
+Refactor size estimate to target "core + module + domain adapter" boundary:
+- Slice A (S): SSOT drift + architecture source-of-truth correction + invariants doc/tests (0.5-1.0 day)
+- Slice B (M): Introduce generic RequestEnvelope/ExecutionResult envelopes alongside current V1 contract (3-5 days)
+- Slice C (M): Build plugin/hook chain abstraction (pre_context, policy, routing, post) with no-op defaults (4-7 days)
+- Slice D (M): Move persona/budget/interceptor from manager state APIs to executable hooks (4-8 days)
+- Slice E (M): Extract provider-specific schema hints/requirements into adapter metadata contracts (3-5 days)
+- Slice F (M): Expand observability to capability/event-based schema while preserving current columns via adapter mapping (3-6 days)
+- Slice G (S-M): Dispatcher refactor to op registry (command handlers as pluggable modules) (2-4 days)
+
+Total forecast:
+- MVP migration (non-breaking, dual-path): ~4-7 engineer-weeks
+- Full domain-agnostic hardening (deprecate legacy assumptions + complete module boundary): ~8-12 engineer-weeks
+
+Blocking unknowns:
+- Whether legacy agent path must remain first-class vs connection-runtime path becoming sole execution surface.
+- Whether policy hooks must be synchronous-only for determinism or async is acceptable.
+
+Immediate next migration list (ordered):
+1) Define canonical core contracts (generic envelope + error taxonomy + event schema).
+2) Introduce execution hook registry and route current persona/context-cache through it.
+3) Add budget/interceptor hooks as monitor-only first, then enforce mode behind deterministic policy flags.
+4) Remove provider-specific branches from manager schema/runtime and move to provider adapter metadata.
+5) Add compatibility adapter so current UI/dispatcher can continue using existing op payloads.

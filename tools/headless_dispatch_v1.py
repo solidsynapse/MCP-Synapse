@@ -105,6 +105,27 @@ def _schema_hint_response(result: dict) -> dict:
     }
 
 
+def _vault_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    warnings = list(result.get("warnings") or [])
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    error_payload = None
+    status = "success" if ok else "error"
+    if not ok:
+        message = "; ".join([str(e) for e in errors]) if errors else "vault_error"
+        error_payload = {"code": "vault_error", "message": message}
+    return {
+        "ok": ok,
+        "status": status,
+        "text": None,
+        "error": error_payload,
+        "errors": errors,
+        "warnings": warnings,
+        "data": data,
+    }
+
+
 def _persona_state_response(result: dict) -> dict:
     ok = bool(result.get("ok"))
     errors = list(result.get("errors") or [])
@@ -365,6 +386,10 @@ def _dispatch_op(payload: dict) -> dict:
         mgr = ServerManager()
         return _connections_response(mgr.delete_connection(payload))
 
+    if op == "connections.stop_all":
+        mgr = ServerManager()
+        return _connections_response(mgr.stop_all_connections())
+
     if op == "connections.schema_hint":
         mgr = ServerManager()
         return _schema_hint_response(mgr.connections_schema_hint(payload))
@@ -376,6 +401,26 @@ def _dispatch_op(payload: dict) -> dict:
     if op == "connections.dry_run":
         mgr = ServerManager()
         return _connections_response(mgr.dry_run_connection(payload))
+
+    if op == "vault.list":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_list())
+
+    if op == "vault.create":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_create(payload))
+
+    if op == "vault.read":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_read(payload))
+
+    if op == "vault.delete":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_delete(payload))
+
+    if op == "vault.pick_credentials_path":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_pick_credentials_path())
 
     if op == "bridges.list":
         data = cfg._read_config()
@@ -417,6 +462,7 @@ def _dispatch_op(payload: dict) -> dict:
                     "connection_id": r.get("agent_id"),
                     "connection_name": r.get("agent_name"),
                     "provider": r.get("provider"),
+                    "model_id": r.get("model_id"),
                     "request_id": r.get("request_id"),
                     "status": r.get("status"),
                     "error_type": r.get("error_type"),

@@ -1394,8 +1394,53 @@ explicit banner preserved; ui check PASS).
   - Evidence indexed (PASS):
     - `docs\evidence\P5_14A_FIX_INTERCEPTORS_RUNTIME_HOOK_V1_20260301-014756\`
     - `docs\evidence\P5_14B_FIX_OPTIMIZATIONS_RUNTIME_BINDING_V1_20260301-014827\`
-    - `docs\evidence\P5_14C_USAGE_CONNECTIONS_RESIDUAL_FIXES_V1_20260301-021346\`
+    - P5.14C PASS (destructive usage.clear runtime reconfirmation completed): `docs\evidence\P5_14C_USAGE_CONNECTIONS_RESIDUAL_FIXES_V1_20260301-021346\`; `docs\evidence\SSOT_SYNC_P5_14C_PASS_20260303-234704\`
     - `docs\evidence\P5_14D_SETTINGS_FUNCTIONAL_VALIDATION_20260301-022031\`
-    - `docs\evidence\P5_14E_TOOLTIP_HELPER_ASSESSMENT_20260301-022540\`
+    - P5.14E PASS (Slice-1 helper baseline for credentials_path implemented with deterministic toggle + modal reopen reset + live interaction reconfirmation): `docs\evidence\P5_14E_TOOLTIP_HELPER_ASSESSMENT_20260301-022540\`; `docs\evidence\SSOT_SYNC_P5_14E_CARRY_FORWARD_20260303-235345\`; `docs\evidence\P5_14E_SLICE1_HELPER_BASELINE_20260304-000254\`; `docs\evidence\P5_14E_SLICE1_HELPER_STATE_RESET_20260304-001918\`; `docs\evidence\SSOT_SYNC_P5_14E_PASS_20260304-002711\`; `docs\evidence\P5_14E_NON_DASH_HELPER_LIVE_RECONFIRM_20260304-010400\`
     - `docs\evidence\P5_14_RUNTIME_EFFECT_TERMINAL_PROOF_V3_20260301-020833\`
-    - P5.14F PASS (historical evidence retained; fresh reconfirmation complete for edit+browse+usage filters+export save-dialog flow): `docs\evidence\UI_FINAL_FIX_QUEUE_APPLY_V3_20260301-090446\`; `docs\evidence\P5_14F_RECONFIRM_20260302-020642\`; `docs\evidence\P5_14F_SLICE_A_20260302-023124\`; `docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711\` (P5.14F slice: Connections edit+browse + Usage/History connection+token-range filters + export modal wiring)
+    - P5.14F PASS (historical evidence retained; fresh reconfirmation complete for edit+browse+usage filters+export save-dialog flow + dashboard hybrid polish re-check + global layout polish + Usage/History filter row release polish + Connections Vault credentials_path browse/use closure + Persona Lite connection-target de-legacy + built-in mini-library preset seed + post-hotfix dual-tool runtime reconfirmation): `docs\evidence\UI_FINAL_FIX_QUEUE_APPLY_V3_20260301-090446\`; `docs\evidence\P5_14F_RECONFIRM_20260302-020642\`; `docs\evidence\P5_14F_SLICE_A_20260302-023124\`; `docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711\`; `docs\evidence\P5_14F_COST_BREAKDOWN_NONZERO_CENTER_20260303-045857\`; `docs\evidence\P5_14F_DASH_QUICK_ALERTS_THRESHOLDS_20260303-051400\`; `docs\evidence\P5_14F_DASH_RECENT_REQUESTS_FIX4_20260303-055859\`; `docs\evidence\P5_14F_DASH_TOP_EXPENSIVE_FIX2_20260303-061419\`; `docs\evidence\P5_14F_DASH_TOP_EXPENSIVE_DYNAMIC_ROWS_20260303-061747\`; `docs\evidence\P5_14F_GLOBAL_LAYOUT_POLISH_20260303-062339\`; `docs\evidence\P5_14F_USAGE_FILTERS_DROPDOWN_WIDTH_FIX_20260303-072429\`; `docs\evidence\P5_14F_USAGE_HISTORY_FILTERS_RIGHT_ALIGN_20260303-072949\`; `docs\evidence\VAULT_V1_0_BASIC_20260303-213215\`; `docs\evidence\VAULT_SLICE_B_HOTFIX_20260303-220024\`; `docs\evidence\VAULT_SLICE_B_SUPERVISOR_HOTFIX_20260303-222100\`; `docs\evidence\VAULT_SLICE_B_BROWSE_DIALOG_HOTFIX_20260303-225421\`; `docs\evidence\USAGE_FILTERS_MIXED_EVENT_HOTFIX_20260304-005358\`; `docs\evidence\USAGE_FAKE_DATA_MINI_RECONFIRM_20260304-011210\`; `docs\evidence\USAGE_MODELID_FILTER_HOTFIX_AND_SEED_20260304-013039\`; `docs\evidence\PERSONA_CONN_TARGETS_HOTFIX_20260304-033643\`; `docs\evidence\PERSONA_PRESET_LIBRARY_SEED_20260304-035015\`; `docs\evidence\VAULT_RUNTIME_BLOCKER_REPRO_20260304-082108\` (P5.14F slices: Connections edit+browse + Usage/History filters/export + Dashboard KPI/charts/alerts/recent/top-expensive + global layout polish + Usage/History filter row release polish + Connections Vault credentials_path browse/use + Persona Lite de-legacy target mapping + built-in mini-library presets + vault runtime blocker repro/hotfix + dual-tool runtime reconfirm)
+
+- V1.0 Release Gate Closure Checklist (post-P5.14, no scope expansion)
+  - Objective: Close release blockers on current surfaces before V1.1 provider/cost expansion.
+  - Gate set (OPEN -> PASS required):
+    1) GATE-V10-UI-SMOKE PASS: Single-session live smoke on Dashboard/Connections/Usage/Policies/Resilience/Settings with no blocker regressions. Evidence: `docs\evidence\V10_GATE_UI_SMOKE_20260304-20260304-090444\`
+    2) GATE-V10-DATA-SAFETY PASS: Usage clear/export behavior reconfirmed with deterministic evidence and rollback-safe note. Evidence: `docs\evidence\V10_GATE_DATA_SAFETY_20260304-20260304-091329\`; `docs\evidence\V10_GATE_UI_SMOKE_20260304-20260304-090444\`; `docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711\`
+    3) GATE-V10-DOCS-LEGAL PASS: Minimum legal/compliance + user guide consistency review completed; comprehensive legal/compliance pack and official EU/provider source register are retained, and release contact map (security/support/legal/product/general) is finalized. Evidence: `docs\evidence\V10_GATE_DOCS_LEGAL_20260304-093733\`; `docs\evidence\V10_GATE_DOCS_LEGAL_PASS_20260304-214636\`
+    4) GATE-V10-RC-READINESS PASS: Release candidate checklist completed (checkpoint + known issues + support boundaries) with explicit contact map and rollback-safe checkpoint references. Evidence: `docs\evidence\V10_GATE_RC_READINESS_20260304-223507\`
+  - Acceptance:
+    - All four gates are PASS with explicit evidence; any open item keeps V1.0 in REVALIDATE.
+  - Evidence required:
+    - `docs\evidence\V10_GATE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
+
+- V1.1 Provider Freeze Gate (4-provider lock)
+  - Decision ref: D-032.
+  - Objective: Lock production-candidate provider scope before LLM cost module acceptance.
+  - Scope IN:
+    - Vertex AI, Azure OpenAI, Bedrock, OpenAI provider readiness checks.
+  - Scope OUT:
+    - Any fifth provider onboarding before freeze closure.
+  - Acceptance:
+    - For each of the 4 providers: connection create/update/preflight/runtime smoke evidence exists.
+    - Usage rows preserve provider + model identity for downstream cost analysis.
+    - Freeze statement is explicit in STATUS/TASKS (no extra provider promise).
+  - Evidence required:
+    - `docs\evidence\V11_PROVIDER_FREEZE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
+  - Progress snapshot (current):
+    - Vertex AI PASS (live reconfirm), OpenAI PASS (live create/update/preflight/runtime + usage identity), Bedrock BLOCKER (connection/auth + invocation path PASS but usable live generation blocked by account quota + current adapter model allowlist constraints), Azure OpenAI OPEN.
+    - Evidence: `docs\evidence\V11_PROVIDER_VERTEX_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128\`; `docs\evidence\Bedrock_Real_Tests\Bedrock_Live_Tests_Results_Evalution.md`; `docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619\`; `docs\evidence\V11_BEDROCK_APIKEY_MODE_20260305-085503\`
+  - Carry-forward note (post-freeze UI consistency):
+    - Usage Summary KPI cards currently remain global under active filters while table/export follows filters; non-blocking for provider freeze, to be handled as follow-up polish.
+
+- V1.1 LLM Lite Cost Gate (trust + consistency)
+  - Decision ref: D-032.
+  - Objective: Prove user-visible cost control consistency after LLM Lite integration.
+  - Acceptance:
+    - Request-level cost is computed deterministically from stored usage fields and active pricing source.
+    - Same-row values are consistent across backend payload, UI tables/cards, and CSV export.
+    - Missing/unsupported pricing path is explicit and non-misleading (no silent fake-zero PASS).
+    - Cross-provider sample set includes Vertex AI, Azure OpenAI, Bedrock, OpenAI.
+  - Evidence required:
+    - `docs\evidence\V11_LLM_COST_GATE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`, `test.txt`

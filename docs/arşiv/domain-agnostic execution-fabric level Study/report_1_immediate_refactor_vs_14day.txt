@@ -1,0 +1,41 @@
+﻿RAPOR-1: Hemen Refaktör (Şimdi Başla) - 14 Gün Paketleme/Beta Dağıtım Hedefi
+
+Kapsam:
+- Hedef: 14 gün içinde installer + beta dağıtım hazır hale gelmek.
+- Senaryo: Domain-agnostic dönüşüm refaktörünü hemen başlatmak.
+
+Varsayımlar:
+1) Tek ürünün release kalemleri aynı 14 günlük pencereye dahil (packaging, smoke, dağıtım hazırlığı).
+2) Refaktör non-breaking dual-path hedefiyle ilerler.
+3) Ekip kapasitesi sabit (ek kaynak yok).
+
+Temel bulgular (kanıt özeti):
+- Önceki audit, non-breaking geçiş için ~4-7 engineer-week öngörüyor.
+- Çekirdekte router/policy enforcement ve provider-specific boundary borcu mevcut.
+- Çalışma alanı halen yüksek değişkenlikte (çoklu aktif değişiklikler).
+
+14 gün hedef etkisi:
+- Beklenen sonuç: Hedefin tutma olasılığı düşer.
+- Tahmini olasılık bandı (danışmanlık tahmini): %15-%35
+- Gerekçe: refaktör eforu + release hardening aynı sprintte çakışıyor.
+
+Ana riskler:
+1) Takvim riski (çok yüksek): release hedefi kaçar, beta dağıtım gecikir.
+2) Regresyon riski (yüksek): boundary değişimleri runtime akışını etkileyebilir.
+3) Kapsam kayması (yüksek): "biraz daha generic" yaklaşımı sprinti büyütür.
+4) Doğrulama yükü (yüksek): installer + runtime + bağlantı/dispatch + UI wiring yeniden test gerekir.
+
+Ana avantajlar:
+1) Mimari borç erken kesilir, sonraki ürünler için temel temizlenir.
+2) Orta vadede geliştirme hızı artabilir.
+3) Platform anlatısı (execution fabric) erken inşa edilir.
+
+Go/No-Go önerisi (bu senaryo için):
+- No-Go (14 gün hedefi kritikse).
+- Go yalnızca şu koşullarda:
+  1) 14 gün hedefi esnetilir (en az +3-5 hafta).
+  2) Refaktör kapsamı 2-3 çekirdek dilime sert sınırla bölünür.
+  3) Ayrı bir release-hardening iş akışı paralel yürütülür.
+
+Sonuç:
+- Hemen tam refaktör, 14 gün paketleme hedefiyle yüksek çelişir.

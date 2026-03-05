@@ -5,11 +5,11 @@
   type BannerKind = "idle" | "info" | "success" | "danger";
   type DispatchError = { code?: string; message?: string };
   type Kpi = { label: string; value: string; icon?: string };
-  type RecentRequest = { time: string; status: string; provider: string; latency: string; tokens: string; cost: string };
-  type TopExpensive = { id: string; cost: string };
+  type RecentRequest = { time: string; request_id?: string; status: string; connection?: string; provider: string; latency: string; tokens: string; cost: string };
+  type TopExpensive = { id: string; time?: string; connection?: string; provider?: string; cost: string };
   type Breakdown = { name: string; color: string; cost: string };
   type Trend = { label: string; valueFormatted: string };
-  type Alert = { level: string; text: string };
+  type Alert = { level: string; text: string; detail?: string };
 
   type DashboardState = {
     kpis: Kpi[];
@@ -29,13 +29,13 @@
     error?: DispatchError | null;
   };
 
-  const KPI_SLOTS: Array<{ label: string; icon: string; t1: string; t2: string }> = [
-    { label: "Total Cost USD", icon: "$", t1: "Total Cost", t2: "USD" },
-    { label: "Total Requests", icon: "R", t1: "Total", t2: "Requests" },
-    { label: "Total Tokens", icon: "T", t1: "Total", t2: "Tokens" },
-    { label: "Success Rate %", icon: "S", t1: "Success Rate", t2: "%" },
-    { label: "Avg Latency ms", icon: "L", t1: "Avg Latency", t2: "ms" },
-    { label: "Active Bridges count", icon: "B", t1: "Active Bridges", t2: "count" },
+  const KPI_SLOTS: Array<{ label: string; valueKey: string; icon: string; t1: string; t2: string }> = [
+    { label: "Total Cost USD", valueKey: "Total Cost USD", icon: "◈", t1: "Total Cost", t2: "USD" },
+    { label: "Total Requests", valueKey: "Total Requests", icon: "⇄", t1: "Total", t2: "Requests" },
+    { label: "Total Tokens", valueKey: "Total Tokens", icon: "◎", t1: "Total", t2: "Tokens" },
+    { label: "Success Rate %", valueKey: "Success Rate %", icon: "✓", t1: "Success Rate", t2: "%" },
+    { label: "Avg Latency ms", valueKey: "Avg Latency ms", icon: "⏱", t1: "Avg Latency", t2: "ms" },
+    { label: "Active Bridges", valueKey: "Active Bridges count", icon: "⛓", t1: "Active Bridges", t2: "count" },
   ];
 
   const DEFAULT_STATE: DashboardState = {
@@ -47,8 +47,16 @@
     quick_alerts: [],
   };
 
-  const RECENT_PAGE_SIZE = 3;
-  const RECENT_MAX_ROWS = 12;
+  const RECENT_MIN_PAGE_SIZE = 3;
+  const RECENT_MAX_PAGE_SIZE = 10;
+  const RECENT_VIEWPORT_OFFSETS_PX = 520;
+  const RECENT_HEADER_PX = 32;
+  const RECENT_ROW_PX = 34;
+  const RECENT_MAX_ROWS = 30;
+  const TOP_EXPENSIVE_MIN_ROWS = 3;
+  const TOP_EXPENSIVE_MAX_ROWS = 6;
+  const TOP_EXPENSIVE_VIEWPORT_OFFSETS_PX = 520;
+  const TOP_EXPENSIVE_ROW_PX = 44;
   const ALERT_COLLAPSE_VISIBLE = 3;
   const TREND_W = 300;
   const TREND_H = 150;
@@ -62,6 +70,8 @@
   let kpis = $state<Kpi[]>(DEFAULT_STATE.kpis);
   let recentRequests = $state<RecentRequest[]>(DEFAULT_STATE.recent_requests);
   let recentPage = $state(1);
+  let recentPageSize = $state(RECENT_MIN_PAGE_SIZE);
+  let topExpensiveVisibleRows = $state(TOP_EXPENSIVE_MIN_ROWS);
   let topExpensive = $state<TopExpensive[]>(DEFAULT_STATE.top_expensive);
   let breakdownLegend = $state<Breakdown[]>(DEFAULT_STATE.breakdown_legend);
   let trendData = $state<Trend[]>(DEFAULT_STATE.trend_data);
@@ -69,8 +79,16 @@
   let alertsExpanded = $state(false);
   let trendHoverIndex = $state<number | null>(null);
   let breakdownHoverIndex = $state<number | null>(null);
+  let trendTooltipX = $state(0);
+  let trendTooltipY = $state(0);
+  let breakdownTooltipX = $state(0);
+  let breakdownTooltipY = $state(0);
   let bannerKind = $state<BannerKind>("idle");
   let bannerText = $state("");
+  let recentTableViewport: HTMLDivElement | null = null;
+  let topExpensiveViewport: HTMLDivElement | null = null;
+  let trendChartWrap: HTMLDivElement | null = null;
+  let breakdownChartWrap: HTMLDivElement | null = null;
   const DASHBOARD_CACHE_KEY = "dashboard.state";
   const DASHBOARD_CACHE_TTL_MS = 45000;
   const DASHBOARD_PERSISTENT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -96,11 +114,11 @@
     const src = state ?? DEFAULT_STATE;
     return {
       kpis: asDictList(src.kpis).map((v) => ({ label: String(v.label || ""), value: String(v.value || ""), icon: String(v.icon || "") })),
-      recent_requests: asDictList(src.recent_requests).map((v) => ({ time: String(v.time || ""), status: String(v.status || ""), provider: String(v.provider || ""), latency: String(v.latency || ""), tokens: String(v.tokens || ""), cost: String(v.cost || "") })),
-      top_expensive: asDictList(src.top_expensive).map((v) => ({ id: String(v.id || ""), cost: String(v.cost || "") })),
+      recent_requests: asDictList(src.recent_requests).map((v) => ({ time: String(v.time || ""), request_id: String(v.request_id || ""), status: String(v.status || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), latency: String(v.latency || ""), tokens: String(v.tokens || ""), cost: String(v.cost || "") })),
+      top_expensive: asDictList(src.top_expensive).map((v) => ({ id: String(v.id || ""), time: String(v.time || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), cost: String(v.cost || "") })),
       breakdown_legend: asDictList(src.breakdown_legend).map((v) => ({ name: String(v.name || ""), color: String(v.color || "#64748b"), cost: String(v.cost || "") })),
       trend_data: asDictList(src.trend_data).map((v) => ({ label: String(v.label || ""), valueFormatted: String(v.valueFormatted || "") })),
-      quick_alerts: asDictList(src.quick_alerts).map((v) => ({ level: String(v.level || "info"), text: String(v.text || "") })),
+      quick_alerts: asDictList(src.quick_alerts).map((v) => ({ level: String(v.level || "info"), text: String(v.text || ""), detail: String(v.detail || "") })),
     };
   }
 
@@ -120,6 +138,11 @@
 
   function kpiValue(label: string): string {
     const row = kpis.find((item) => item.label === label);
+    const value = String(row?.value || "").trim();
+    return value || "-";
+  }
+  function kpiValueByKey(key: string): string {
+    const row = kpis.find((item) => item.label === key);
     const value = String(row?.value || "").trim();
     return value || "-";
   }
@@ -209,7 +232,7 @@
   }
 
   function trendPath(rows: Trend[]) {
-    if (rows.length === 0) return { line: "", area: "", labels: [] as string[], points: [] as Array<{ x: number; y: number; label: string; formatted: string }> };
+    if (rows.length === 0) return { line: "", area: "", ticks: [] as string[], points: [] as Array<{ x: number; y: number; label: string; formatted: string }> };
     const values = rows.map((r) => parseUsd(r.valueFormatted));
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -222,9 +245,10 @@
     const line = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
     const baseY = TREND_H - TREND_PAD_Y;
     const area = `${line} L ${points[points.length - 1].x} ${baseY} L ${points[0].x} ${baseY} Z`;
-    const idx = [0, Math.round((rows.length - 1) * 0.25), Math.round((rows.length - 1) * 0.5), Math.round((rows.length - 1) * 0.75), rows.length - 1];
-    const labels = [...new Set(idx)].map((i) => points[i]?.label || "--");
-    return { line, area, labels, points };
+    const tickCount = rows.length <= 4 ? rows.length : 5;
+    const idx = Array.from({ length: tickCount }, (_, i) => Math.round(((rows.length - 1) * i) / (tickCount - 1 || 1)));
+    const ticks = [...new Set(idx)].map((i) => points[i]?.label || "--");
+    return { line, area, ticks, points };
   }
 
   function donutSegments(rows: Breakdown[]) {
@@ -234,9 +258,10 @@
     const others = rest.reduce((s, r) => s + r.value, 0);
     const merged = [...top];
     if (others > 0) merged.push({ name: "Others", color: "#64748b", cost: `$${others.toFixed(2)}`, value: others });
-    const total = merged.reduce((s, r) => s + r.value, 0);
+    const nonZero = merged.filter((r) => r.value > 0);
+    const total = nonZero.reduce((s, r) => s + r.value, 0);
     let cursor = 0;
-    return merged.map((r) => {
+    return nonZero.map((r) => {
       const pct = total > 0 ? (r.value / total) * 100 : 0;
       const start = cursor;
       const end = cursor + pct * 3.6;
@@ -260,9 +285,9 @@
     return `M ${outerStart.x} ${outerStart.y} A ${DONUT_R} ${DONUT_R} 0 ${large} 1 ${outerEnd.x} ${outerEnd.y} L ${innerStart.x} ${innerStart.y} A ${DONUT_R - DONUT_STROKE} ${DONUT_R - DONUT_STROKE} 0 ${large} 0 ${innerEnd.x} ${innerEnd.y} Z`;
   }
 
-  function normalizeAlertLevel(level: string): "danger" | "warning" | "info" {
+  function normalizeAlertLevel(level: string): "critical" | "warning" | "info" {
     const v = String(level || "").toLowerCase();
-    if (v.includes("danger") || v.includes("critical") || v.includes("error")) return "danger";
+    if (v.includes("danger") || v.includes("critical") || v.includes("error")) return "critical";
     if (v.includes("warn")) return "warning";
     return "info";
   }
@@ -272,7 +297,13 @@
     const success = norm.filter((a) => /success\s*rate/i.test(a.text));
     const budget = norm.filter((a) => !/success\s*rate/i.test(a.text) && /budget|threshold|quota|limit|spend/i.test(a.text));
     const other = norm.filter((a) => !success.includes(a) && !budget.includes(a));
-    budget.sort((a, b) => normalizeAlertLevel(a.level).localeCompare(normalizeAlertLevel(b.level)));
+    const rank = (alert: Alert): number => {
+      const lvl = normalizeAlertLevel(alert.level);
+      if (lvl === "critical") return 0;
+      if (lvl === "warning") return 1;
+      return 2;
+    };
+    budget.sort((a, b) => rank(a) - rank(b));
     return [...success, ...budget, ...other];
   }
 
@@ -299,13 +330,28 @@
     return recentRequests.slice(0, RECENT_MAX_ROWS);
   }
 
+  function recomputeRecentPageSize() {
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+    const tableHeight = recentTableViewport?.clientHeight || 0;
+    const h = tableHeight > 0 ? tableHeight : (viewportHeight - RECENT_VIEWPORT_OFFSETS_PX);
+    if (h <= 0) return;
+    const next = Math.max(
+      RECENT_MIN_PAGE_SIZE,
+      Math.min(RECENT_MAX_PAGE_SIZE, Math.floor((h - RECENT_HEADER_PX - 8) / RECENT_ROW_PX))
+    );
+    if (next !== recentPageSize) {
+      recentPageSize = next;
+      if (recentPage > totalRecentPages()) recentPage = totalRecentPages();
+    }
+  }
+
   function totalRecentPages(): number {
-    return Math.max(1, Math.ceil(recentWindow().length / RECENT_PAGE_SIZE));
+    return Math.max(1, Math.ceil(recentWindow().length / recentPageSize));
   }
 
   function recentRowsForCurrentPage(): RecentRequest[] {
-    const start = (recentPage - 1) * RECENT_PAGE_SIZE;
-    return recentWindow().slice(start, start + RECENT_PAGE_SIZE);
+    const start = (recentPage - 1) * recentPageSize;
+    return recentWindow().slice(start, start + recentPageSize);
   }
 
   function canPrevRecentPage(): boolean {
@@ -324,12 +370,66 @@
     if (canNextRecentPage()) recentPage += 1;
   }
 
-  function topPrimary(_item: TopExpensive, idx: number): string {
-    return recentWindow()[idx]?.provider || "Provider";
+  function topPrimary(item: TopExpensive): string {
+    const connection = String(item.connection || "").trim();
+    const provider = String(item.provider || "").trim();
+    if (connection && provider && connection.toLowerCase() !== provider.toLowerCase()) {
+      return `${provider} / ${connection}`;
+    }
+    return connection || provider || "Provider";
   }
 
-  function topSecondary(_item: TopExpensive, idx: number): string {
-    return formatRequestTime(recentWindow()[idx]?.time || "");
+  function topSecondary(item: TopExpensive): string {
+    const rawTime = String(item.time || "");
+    const d = new Date(rawTime);
+    const shortTime = Number.isNaN(d.getTime())
+      ? (rawTime ? rawTime.slice(0, 16) : "-")
+      : `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const reqId = String(item.id || "").trim();
+    const shortId = reqId ? `#${reqId.slice(-8)}` : "#-";
+    return `${shortTime} | ${shortId}`;
+  }
+
+  function requestConnectionProvider(req: RecentRequest): string {
+    const connection = String(req.connection || "").trim();
+    const provider = String(req.provider || "").trim();
+    if (connection && provider && connection.toLowerCase() !== provider.toLowerCase()) {
+      return `${connection} / ${provider}`;
+    }
+    return connection || provider || "-";
+  }
+
+  function recomputeTopExpensiveVisibleRows() {
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+    const boxHeight = topExpensiveViewport?.clientHeight || 0;
+    const h = boxHeight > 0 ? boxHeight : (viewportHeight - TOP_EXPENSIVE_VIEWPORT_OFFSETS_PX);
+    if (h <= 0) return;
+    const next = Math.max(
+      TOP_EXPENSIVE_MIN_ROWS,
+      Math.min(TOP_EXPENSIVE_MAX_ROWS, Math.floor(h / TOP_EXPENSIVE_ROW_PX))
+    );
+    if (next !== topExpensiveVisibleRows) topExpensiveVisibleRows = next;
+  }
+
+  function tokenTotalTooltip(tokens: string): string {
+    const m = String(tokens || "").match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+    if (!m) return "";
+    const total = Number.parseInt(m[1], 10) + Number.parseInt(m[2], 10);
+    return `Total: ${total}`;
+  }
+
+  function updateTrendTooltip(event: MouseEvent) {
+    if (!trendChartWrap) return;
+    const rect = trendChartWrap.getBoundingClientRect();
+    trendTooltipX = event.clientX - rect.left + 10;
+    trendTooltipY = event.clientY - rect.top - 14;
+  }
+
+  function updateBreakdownTooltip(event: MouseEvent) {
+    if (!breakdownChartWrap) return;
+    const rect = breakdownChartWrap.getBoundingClientRect();
+    breakdownTooltipX = event.clientX - rect.left + 10;
+    breakdownTooltipY = event.clientY - rect.top - 14;
   }
 
   function getStatusColor(status: string) {
@@ -355,14 +455,28 @@
     // Emergency perf mode: disable background polling and focus-triggered refreshes.
     // Dashboard refresh stays manual via global refresh button event.
     const handleGlobalRefresh = () => void loadDashboardState(true);
+    const handleWindowResize = () => {
+      recomputeRecentPageSize();
+      recomputeTopExpensiveVisibleRows();
+    };
     window.addEventListener("synapse:global-refresh", handleGlobalRefresh as EventListener);
+    window.addEventListener("resize", handleWindowResize);
+    const ro = new ResizeObserver(() => recomputeRecentPageSize());
+    if (recentTableViewport) ro.observe(recentTableViewport);
+    const roTop = new ResizeObserver(() => recomputeTopExpensiveVisibleRows());
+    if (topExpensiveViewport) roTop.observe(topExpensiveViewport);
+    window.setTimeout(() => recomputeRecentPageSize(), 0);
+    window.setTimeout(() => recomputeTopExpensiveVisibleRows(), 0);
     return () => {
       window.removeEventListener("synapse:global-refresh", handleGlobalRefresh as EventListener);
+      window.removeEventListener("resize", handleWindowResize);
+      ro.disconnect();
+      roTop.disconnect();
     };
   });
 </script>
 
-<div class="space-y-4 p-5">
+<div class="space-y-4 px-5 pt-4 pb-0 overflow-x-hidden">
   {#if bannerText}
     <div class={`rounded-md border px-3 py-2 text-xs ${bannerClass(bannerKind)}`}>{bannerText}</div>
   {/if}
@@ -375,9 +489,9 @@
             <div>{slot.t1}</div>
             <div>{slot.t2}</div>
           </div>
-          <span class="shrink-0 text-xs text-slate-500 opacity-60">{slot.icon}</span>
+          <span class="shrink-0 text-xs text-slate-400 opacity-80">{slot.icon}</span>
         </div>
-        <div class="mt-2 text-xl font-semibold tracking-tight text-white">{kpiValue(slot.label)}</div>
+        <div class="mt-1.5 text-xl font-semibold tracking-tight text-white">{kpiValueByKey(slot.valueKey)}</div>
       </div>
     {/each}
   </div>
@@ -387,30 +501,30 @@
       <h3 class="mb-3 text-sm font-medium text-slate-300">Cost Trend (Last 30 Days)</h3>
       {#if trendData.length > 0}
         {@const tm = trendPath(trendData)}
-        <div class="relative w-full" style="height: 172px;">
+        <div class="relative w-full" style="height: 172px;" bind:this={trendChartWrap}>
           <svg viewBox={`0 0 ${TREND_W} ${TREND_H}`} class="h-full w-full overflow-visible">
             <defs>
               <linearGradient id="trend-gradient-live" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="var(--accent-base)" stop-opacity="0.2" />
+                <stop offset="0%" stop-color="var(--accent-base)" stop-opacity="0.14" />
                 <stop offset="100%" stop-color="var(--accent-base)" stop-opacity="0" />
               </linearGradient>
             </defs>
             <path d={tm.area} fill="url(#trend-gradient-live)" stroke="none" />
-            <path d={tm.line} fill="none" stroke="var(--accent-base)" stroke-width="2" vector-effect="non-scaling-stroke" />
+            <path d={tm.line} fill="none" stroke="var(--accent-base)" stroke-width="1.75" vector-effect="non-scaling-stroke" />
             {#each tm.points as point, idx (`${point.label}-${idx}`)}
-              <circle cx={point.x} cy={point.y} r={trendHoverIndex === idx ? 4 : 3} fill="rgba(191,219,254,0.95)" stroke="rgba(30,41,59,0.9)" stroke-width="1" onmouseenter={() => (trendHoverIndex = idx)} onmouseleave={() => (trendHoverIndex = null)} />
+              <circle cx={point.x} cy={point.y} r={trendHoverIndex === idx ? 3.5 : 2.5} fill="rgba(148,163,184,0.9)" stroke="rgba(30,41,59,0.6)" stroke-width="0.8" onmouseenter={() => (trendHoverIndex = idx)} onmousemove={updateTrendTooltip} onmouseleave={() => (trendHoverIndex = null)} />
             {/each}
           </svg>
           {#if trendHoverIndex !== null && tm.points[trendHoverIndex]}
-            <div class="pointer-events-none absolute right-1 top-1 rounded-md border px-2 py-1 text-[12px] leading-5 text-slate-100" style="background-color: rgba(2,6,23,0.92); border-color: rgba(100,116,139,0.45);">
+            <div class="pointer-events-none absolute rounded-md border px-2 py-1 text-[12px] leading-5 text-slate-100" style={`left:${trendTooltipX}px; top:${trendTooltipY}px; transform: translateY(-100%); background-color: rgba(2,6,23,0.92); border-color: rgba(100,116,139,0.45);`}>
               <div>{tm.points[trendHoverIndex].label}</div>
               <div class="font-medium">{tm.points[trendHoverIndex].formatted}</div>
             </div>
           {/if}
         </div>
-        <div class="mt-2 flex justify-between pb-1 text-[12px] text-slate-500">
-          {#each tm.labels as t, i (`tick-${i}`)}
-            <div>{t}</div>
+        <div class="mt-2 flex justify-between px-2 pb-1 text-[11px] text-slate-400/90">
+          {#each tm.ticks as t, i (`tick-${i}`)}
+            <div class="min-w-[44px] text-center">{t}</div>
           {/each}
         </div>
       {:else}
@@ -424,29 +538,26 @@
         {@const segs = donutSegments(breakdownLegend)}
         {#if segs.length > 0}
           <div class="flex items-center justify-center" style="height: 145px;">
-            <div class="relative">
+            <div class="relative" bind:this={breakdownChartWrap}>
               <svg width="132" height="132" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="40" fill="none" stroke="#21262d" stroke-width={DONUT_STROKE} />
                 {#each segs as seg, idx (`${seg.name}-${idx}`)}
-                  <path d={arcPath(seg.start, seg.end)} fill={seg.color} opacity={breakdownHoverIndex === null || breakdownHoverIndex === idx ? 1 : 0.35} onmouseenter={() => (breakdownHoverIndex = idx)} onmouseleave={() => (breakdownHoverIndex = null)} />
+                  <path d={arcPath(seg.start, seg.end)} fill={seg.color} opacity={breakdownHoverIndex === null || breakdownHoverIndex === idx ? 1 : 0.35} onmouseenter={() => (breakdownHoverIndex = idx)} onmousemove={updateBreakdownTooltip} onmouseleave={() => (breakdownHoverIndex = null)} />
                 {/each}
               </svg>
               {#if breakdownHoverIndex !== null && segs[breakdownHoverIndex]}
-                <div class="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 rounded-md border px-2 py-1 text-[11px] leading-4 text-slate-100" style="background-color: rgba(2,6,23,0.92); border-color: rgba(100,116,139,0.45);">
+                <div class="pointer-events-none absolute rounded-md border px-2 py-1 text-[11px] leading-4 text-slate-100" style={`left:${breakdownTooltipX}px; top:${breakdownTooltipY}px; transform: translateY(-100%); background-color: rgba(2,6,23,0.92); border-color: rgba(100,116,139,0.45);`}>
                   <div>{segs[breakdownHoverIndex].name}</div>
                   <div class="font-medium">{segs[breakdownHoverIndex].cost} ({segs[breakdownHoverIndex].pct.toFixed(1)}%)</div>
                 </div>
               {/if}
             </div>
           </div>
-          <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-slate-300">
+          <div class="mt-2 grid grid-cols-2 justify-center gap-x-5 gap-y-1.5 px-2 text-[11px] text-slate-300">
             {#each segs as row, idx (`legend-${row.name}-${idx}`)}
-              <div class="flex min-w-0 items-center justify-between gap-2">
-                <span class="flex min-w-0 items-center gap-2">
-                  <span class="h-2 w-2 rounded-full" style={`background-color: ${row.color};`}></span>
-                  <span class="truncate">{row.name}</span>
-                </span>
-                <span class="shrink-0 tabular-nums text-slate-400">{row.cost}</span>
+              <div class={`inline-flex items-center gap-2 min-w-0 ${segs.length % 2 === 1 && idx === segs.length - 1 ? "col-span-2 justify-self-center" : "justify-self-start"}`}>
+                <span class="h-2 w-2 rounded-full" style={`background-color: ${row.color};`}></span>
+                <span>{row.name}</span>
               </div>
             {/each}
           </div>
@@ -464,9 +575,14 @@
         <div class="space-y-2">
           {#each visibleAlerts(orderedAlerts(quickAlerts)) as alert (alert.text)}
             {@const lvl = normalizeAlertLevel(alert.level)}
-            <div class={`flex items-center gap-3 rounded-lg px-3 py-2 ${lvl === "danger" ? "border border-red-900/30 bg-red-900/10" : lvl === "warning" ? "border border-amber-900/30 bg-amber-900/10" : "border border-slate-700/40 bg-slate-700/20"}`}>
-              <span class={`text-xs ${lvl === "danger" ? "text-red-400" : lvl === "warning" ? "text-amber-400" : "text-slate-300"}`}>{lvl === "danger" ? "!" : lvl === "warning" ? "i" : "*"}</span>
-              <span class={`text-xs font-medium ${lvl === "danger" ? "text-red-200" : lvl === "warning" ? "text-amber-200" : "text-slate-200"}`}>{alert.text}</span>
+            <div class={`flex items-start gap-3 rounded-lg px-3 py-2 ${lvl === "critical" ? "border border-red-900/30 bg-red-900/10" : lvl === "warning" ? "border border-amber-900/30 bg-amber-900/10" : "border border-slate-700/40 bg-slate-700/20"}`}>
+              <span class={`text-xs ${lvl === "critical" ? "text-red-400" : lvl === "warning" ? "text-amber-400" : "text-slate-300"}`}>{lvl === "critical" ? "!" : lvl === "warning" ? "i" : "*"}</span>
+              <span class="flex min-w-0 flex-col">
+                <span class={`text-xs font-medium ${lvl === "critical" ? "text-red-200" : lvl === "warning" ? "text-amber-200" : "text-slate-200"}`}>{alert.text}</span>
+                {#if alert.detail}
+                  <span class="text-[10px] text-slate-300/80">{alert.detail}</span>
+                {/if}
+              </span>
             </div>
           {/each}
         </div>
@@ -484,23 +600,23 @@
   </div>
 
   <div class="grid grid-cols-3 gap-4">
-    <div class="col-span-2 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); min-height: 240px;">
+    <div class="col-span-2 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Recent Requests</h3>
-      <div class="flex-1 overflow-hidden rounded-lg border" style="border-color: var(--border-subtle);">
+      <div class="flex-1 overflow-hidden rounded-lg border" style="border-color: var(--border-subtle);" bind:this={recentTableViewport}>
         <table class="w-full table-fixed text-left text-[11px] leading-4">
           <colgroup>
-            <col style="width: 26%;" />
+            <col style="width: 24%;" />
             <col style="width: 12%;" />
-            <col style="width: 14%;" />
-            <col style="width: 13%;" />
-            <col style="width: 18%;" />
-            <col style="width: 17%;" />
+            <col style="width: 22%;" />
+            <col style="width: 12%;" />
+            <col style="width: 15%;" />
+            <col style="width: 15%;" />
           </colgroup>
           <thead class="bg-slate-900/50 text-slate-400">
             <tr>
               <th class="h-8 whitespace-nowrap px-3 py-2 font-medium">Time</th>
               <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Status</th>
-              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Provider</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Connection/Provider</th>
               <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Latency</th>
               <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Tokens In/Out</th>
               <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Cost</th>
@@ -510,11 +626,11 @@
             {#if recentWindow().length > 0}
               {#each recentRowsForCurrentPage() as req (`${req.time}-${req.provider}-${req.cost}`)}
                 <tr class="h-9 border-t hover:bg-white/5" style="border-color: rgba(100,116,139,0.18);">
-                  <td class="truncate px-3 py-2 text-slate-300" title={req.time}>{formatRequestTime(req.time)}</td>
+                  <td class="truncate px-3 py-2 text-slate-300" title={req.request_id || ""}>{formatRequestTime(req.time)}</td>
                   <td class="px-3 py-2 text-center"><span class={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusColor(req.status)}`}>{req.status.includes("Error") ? "Error" : "Success"}</span></td>
-                  <td class="truncate px-3 py-2 text-center text-slate-300" title={req.provider}>{req.provider || "-"}</td>
+                  <td class="truncate px-3 py-2 text-center text-slate-300" title={requestConnectionProvider(req)}>{requestConnectionProvider(req)}</td>
                   <td class="px-3 py-2 text-center text-slate-300">{req.latency || "-"}</td>
-                  <td class="px-3 py-2 text-center text-slate-300">{req.tokens || "-"}</td>
+                  <td class="px-3 py-2 text-center text-slate-300" title={tokenTotalTooltip(req.tokens)}>{req.tokens || "-"}</td>
                   <td class="px-3 py-2 text-center text-slate-300">{req.cost || "-"}</td>
                 </tr>
               {/each}
@@ -526,8 +642,7 @@
           </tbody>
         </table>
       </div>
-      <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-        <span>{recentWindow().length > 0 ? `Showing ${Math.min(RECENT_MAX_ROWS, recentWindow().length)} latest requests` : "No requests yet"}</span>
+      <div class="mt-2 flex items-center justify-end text-[11px] text-slate-400">
         <div class="flex items-center gap-2">
           <button type="button" class="rounded-md border px-2 py-1 text-[11px] hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-45" style="border-color: var(--border-subtle);" disabled={!canPrevRecentPage()} onclick={prevRecentPage}>Prev</button>
           <span>Page {recentPage} / {totalRecentPages()}</span>
@@ -536,15 +651,15 @@
       </div>
     </div>
 
-    <div class="col-span-1 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); min-height: 240px;">
+    <div class="col-span-1 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Top Expensive Requests</h3>
-      <div class="flex-1 space-y-0 overflow-hidden">
+      <div class="flex-1 space-y-0 overflow-hidden" bind:this={topExpensiveViewport}>
         {#if topExpensive.length > 0}
-          {#each topExpensive.slice(0, 3) as item, idx (item.id)}
+          {#each topExpensive.slice(0, topExpensiveVisibleRows) as item (item.id)}
             <div class="flex items-center justify-between border-b py-2 last:border-0" style="border-color: var(--border-subtle);">
               <div class="min-w-0 pr-2">
-                <div class="truncate text-xs text-slate-300">{topPrimary(item, idx)}</div>
-                <div class="truncate text-[10px] text-slate-500/90">{topSecondary(item, idx)}</div>
+                <div class="truncate text-xs text-slate-300">{topPrimary(item)}</div>
+                <div class="truncate text-[10px] text-slate-500/90">{topSecondary(item)}</div>
               </div>
               <div class="text-xs font-medium text-slate-200 tabular-nums">{item.cost}</div>
             </div>

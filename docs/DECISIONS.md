@@ -720,3 +720,38 @@ P4 UI PREP is ALLOWED when:
   4) Settings functional validation
   5) Tooltip/helper evaluation (post-functional gate)
   6) Final copy/meta fixes + UI polish + app icon
+
+## D-032 — V1.0 Gate Closure Then V1.1 Provider Freeze + LLM Cost Gate
+
+- Date: 2026-03-04
+- Decision:
+  - V1.0 MUST close remaining release gates on current surfaces first; no scope expansion before closure.
+  - Immediately after V1.0 closure, V1.1 MUST run a Provider Freeze Gate with exactly these target providers:
+    1) Vertex AI
+    2) Azure OpenAI
+    3) Bedrock
+    4) OpenAI
+  - LLM Lite integration MUST be evaluated and accepted only through a dedicated LLM Cost Gate after provider freeze.
+- Constraints:
+  - During Provider Freeze + LLM Cost Gate, provider scope MUST NOT expand beyond the four listed targets.
+  - Cost output MUST be deterministic and consistent across backend response, UI display, and CSV export for the same rows.
+  - If pricing metadata is missing/unsupported, state MUST be explicit (no silent fake-zero success claim).
+- Normative order:
+  1) V1.0 release gate closure
+  2) V1.1 provider freeze gate (4-provider lock)
+  3) V1.1 LLM cost gate (consistency + trust)
+
+## D-033 — BYOK + Local-Only Boundary and Forbidden Use Lock
+
+- Date: 2026-03-04
+- Decision:
+  - Product operation model is BYOK + local-only orchestration.
+  - Product MUST NOT be positioned or operated as a shared key pool, managed key broker, or proxy-as-a-service.
+- Constraints (normative):
+  - Provider credentials belong to the deploying user/organization account; credential sharing/pooling across unrelated third parties is forbidden.
+  - UI/docs must clearly state that provider calls execute under user-configured provider terms, quotas, and legal obligations.
+  - Product support boundaries must remain explicit: app behavior is supported, provider account governance remains user responsibility.
+- Forbidden uses (release policy):
+  1) Offering paid/free shared access to one provider key across external tenants via this app.
+  2) Reselling the app endpoint as a generic hosted proxy service for third parties.
+  3) Misrepresenting the app as a compliance substitute for provider-side contractual/regulatory duties.

@@ -243,6 +243,7 @@
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
       <div class="ui-subtitle">Manage persisted resilience interceptors.</div>
+      <div class="mt-1 text-[11px]" style="color: var(--text-muted);">Changes apply to new requests after you click Save.</div>
     </div>
   </div>
 

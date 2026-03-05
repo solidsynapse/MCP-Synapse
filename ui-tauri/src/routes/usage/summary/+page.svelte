@@ -146,7 +146,7 @@
     const headerHeight = header?.getBoundingClientRect().height ?? 0;
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
     const rowHeight = bodyRow?.getBoundingClientRect().height ?? 28;
-    const available = window.innerHeight - rect.top - headerHeight - footerHeight - 24;
+    const available = window.innerHeight - rect.top - headerHeight - footerHeight - 48;
     const nextSize = Math.max(3, Math.floor(available / rowHeight));
     if (nextSize !== pageSize) pageSize = nextSize;
   }
@@ -339,7 +339,7 @@
   });
 </script>
 
-<div class="space-y-4 p-6">
+<div class="space-y-4 px-6 pt-5 pb-1">
   {#if bannerText}
     <div class={`rounded-md border px-3 py-2 text-xs ${bannerClass(bannerKind)}`}>{bannerText}</div>
   {/if}

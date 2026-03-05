@@ -162,12 +162,12 @@
       "
     >
       <div
-        class={`flex h-[56px] items-center justify-between border-b ${sidebarCollapsed ? "gap-2 px-3" : "gap-3 px-4"}`}
+        class={`flex h-[56px] items-center justify-between border-b ${sidebarCollapsed ? "gap-1 px-2" : "gap-3 px-4"}`}
         style="border-color: var(--border-subtle);"
       >
-        <div class="flex min-w-0 flex-1 items-center gap-3">
+        <div class={`flex min-w-0 shrink-0 items-center gap-3 ${sidebarCollapsed ? "" : "flex-1"}`}>
           <div 
-            class="grid h-8 w-8 place-items-center rounded-md text-sm font-semibold"
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm font-semibold"
             style="background: linear-gradient(135deg, var(--accent-base), #1a7f6c); color: #fff;"
           >
             M

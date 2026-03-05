@@ -9,6 +9,7 @@
     connection_id: string | null;
     connection_name: string | null;
     provider: string | null;
+    model_id: string | null;
     request_id: string | null;
     status: string | null;
     latency_ms: number | null;
@@ -31,13 +32,18 @@
     text?: string | null;
     error?: DispatchError | null;
   };
+  type ConnectionsListResponse = {
+    ok: boolean;
+    connections?: Array<{ id?: string; model_id?: string }>;
+    error?: DispatchError | null;
+  };
 
   const session = getUsageSession();
 
   let provider = $state<ProviderId>(session.provider as ProviderId);
   let dateRange = $state<DateRangeId>(session.dateRange as DateRangeId);
   let sort = $state<SortId>(session.sort as SortId);
-  let connectionFilter = $state<string>("all");
+  let modelIdFilter = $state<string>("all");
   let totalTokensRange = $state<TokenRangeId>("all");
 
   $effect(() => {
@@ -55,12 +61,21 @@
   let exportProvider = $state<ProviderId>("all");
   let exportDateRange = $state<DateRangeId>("all");
   let exportSort = $state<SortId>("time_desc");
-  let exportConnectionFilter = $state<string>("all");
+  let exportModelIdFilter = $state<string>("all");
   let exportTotalTokensRange = $state<TokenRangeId>("all");
 
   let rows = $state<UsageRow[]>([]);
+  let modelIdByConnectionId = $state<Record<string, string>>({});
   const USAGE_HISTORY_CACHE_KEY = "usage.history.recent";
   const USAGE_HISTORY_CACHE_TTL_MS = 60000;
+
+  function resolvedModelId(row: UsageRow): string {
+    const direct = String(row.model_id || "").trim();
+    if (direct) return direct;
+    const cid = String(row.connection_id || "").trim();
+    if (!cid) return "";
+    return String(modelIdByConnectionId[cid] || "").trim();
+  }
 
   function parseTimeMs(ts: string | null) {
     if (!ts) return 0;
@@ -125,14 +140,13 @@
     return true;
   }
 
-  const connectionFilterOptions = $derived(() => {
+  const modelIdFilterOptions = $derived(() => {
     const seen = new Map<string, string>();
     for (const row of rows) {
-      const id = String(row.connection_id || "").trim();
+      const id = resolvedModelId(row);
       if (!id) continue;
       if (seen.has(id)) continue;
-      const name = String(row.connection_name || "").trim();
-      seen.set(id, name ? `${name} (${id})` : id);
+      seen.set(id, id);
     }
     return [{ id: "all", label: "All" }, ...Array.from(seen.entries()).map(([id, label]) => ({ id, label }))];
   });
@@ -143,7 +157,7 @@
       provider: ProviderId;
       dateRange: DateRangeId;
       sort: SortId;
-      connectionFilter: string;
+      modelIdFilter: string;
       totalTokensRange: TokenRangeId;
     },
   ): UsageRow[] {
@@ -155,7 +169,7 @@
         if (startMs <= 0) return true;
         return parseTimeMs(row.timestamp) >= startMs;
       })
-      .filter((row) => (args.connectionFilter === "all" ? true : String(row.connection_id || "") === args.connectionFilter))
+      .filter((row) => (args.modelIdFilter === "all" ? true : resolvedModelId(row) === args.modelIdFilter))
       .filter((row) => tokenRangeMatch(totalTokens(row), args.totalTokensRange));
     filtered.sort((a, b) => {
       if (args.sort === "time_desc") return parseTimeMs(b.timestamp) - parseTimeMs(a.timestamp);
@@ -172,7 +186,7 @@
       provider,
       dateRange,
       sort,
-      connectionFilter,
+      modelIdFilter,
       totalTokensRange,
     })
   );
@@ -203,7 +217,7 @@
     const headerHeight = header?.getBoundingClientRect().height ?? 0;
     const footerHeight = footer?.getBoundingClientRect().height ?? 0;
     const rowHeight = bodyRow?.getBoundingClientRect().height ?? 28;
-    const available = window.innerHeight - rect.top - headerHeight - footerHeight - 24;
+    const available = window.innerHeight - rect.top - headerHeight - footerHeight - 48;
     const nextSize = Math.min(18, Math.max(4, Math.floor(available / rowHeight)));
     if (nextSize !== pageSize) pageSize = nextSize;
   }
@@ -269,6 +283,39 @@
     }) as UsageRecentResponse;
   }
 
+  async function dispatchConnectionsInvoke(promptPayload: Record<string, unknown>): Promise<ConnectionsListResponse> {
+    const tauriGlobal = typeof window !== "undefined"
+      ? (window as any).__TAURI__ ?? (window as any).__TAURI_INTERNALS__
+      : null;
+    if (!tauriGlobal) {
+      return { ok: false, error: { code: "desktop_required", message: "Desktop app required" } };
+    }
+    const { invoke } = await import("@tauri-apps/api/core");
+    const prompt = JSON.stringify(promptPayload);
+    return await invoke("dispatch_execute_request_v1", {
+      agentId: "connections",
+      agent_id: "connections",
+      prompt,
+    }) as ConnectionsListResponse;
+  }
+
+  async function refreshModelIdMap() {
+    try {
+      const result = await dispatchConnectionsInvoke({ op: "connections.list" });
+      if (!result.ok || !Array.isArray(result.connections)) return;
+      const next: Record<string, string> = {};
+      for (const row of result.connections) {
+        const id = String(row?.id || "").trim();
+        const model = String(row?.model_id || "").trim();
+        if (!id || !model) continue;
+        next[id] = model;
+      }
+      modelIdByConnectionId = next;
+    } catch {
+      // Keep usage table functional even if connections list is unavailable.
+    }
+  }
+
   async function loadUsageHistory() {
     setBanner("idle", "");
     try {
@@ -294,6 +341,7 @@
           connection_id: typeof row?.connection_id === "string" ? row.connection_id : null,
           connection_name: typeof row?.connection_name === "string" ? row.connection_name : null,
           provider: typeof row?.provider === "string" ? row.provider : null,
+          model_id: typeof row?.model_id === "string" ? row.model_id : null,
           request_id: typeof row?.request_id === "string" ? row.request_id : null,
           status: typeof row?.status === "string" ? row.status : null,
           latency_ms: typeof row?.latency_ms === "number" ? row.latency_ms : null,
@@ -303,6 +351,7 @@
         }));
       });
       rows = nextRows;
+      await refreshModelIdMap();
       uiCacheSet(USAGE_HISTORY_CACHE_KEY, nextRows);
       currentPage = 1;
     } catch (err: any) {
@@ -310,16 +359,22 @@
     }
   }
 
-  function csvEscape(value: string) {
-    if (value.includes('"') || value.includes(",") || value.includes("\n") || value.includes("\r")) {
+  function csvDelimiter() {
+    const sample = (1.1).toLocaleString();
+    return sample.includes(",") ? ";" : ",";
+  }
+
+  function csvEscape(value: string, delimiter: string) {
+    if (value.includes('"') || value.includes(delimiter) || value.includes("\n") || value.includes("\r")) {
       return `"${value.replaceAll('"', '""')}"`;
     }
     return value;
   }
 
   function buildCsv(rowsToExport: UsageRow[]) {
+    const delimiter = csvDelimiter();
     const headers = ["Time", "Connection", "ID", "Provider", "Status", "Latency (ms)", "Tokens in", "Tokens out", "Cost (USD)"];
-    const lines: string[] = [headers.join(",")];
+    const lines: string[] = [headers.join(delimiter)];
     for (const r of rowsToExport) {
       const cols = [
         formatTimestamp(r.timestamp),
@@ -332,10 +387,10 @@
         r.tokens_output == null ? "N/A" : String(r.tokens_output),
         formatMoneyPrecise(r.cost_usd),
       ];
-      lines.push(cols.map((c) => csvEscape(c)).join(","));
+      lines.push(cols.map((c) => csvEscape(c, delimiter)).join(delimiter));
     }
 
-    const csv = lines.join("\n") + "\n";
+    const csv = "\uFEFF" + lines.join("\n") + "\n";
     return csv;
   }
 
@@ -378,7 +433,7 @@
     exportProvider = provider;
     exportDateRange = dateRange;
     exportSort = sort;
-    exportConnectionFilter = connectionFilter;
+    exportModelIdFilter = modelIdFilter;
     exportTotalTokensRange = totalTokensRange;
     exportConfirmOpen = true;
   }
@@ -392,7 +447,7 @@
       provider: exportProvider,
       dateRange: exportDateRange,
       sort: exportSort,
-      connectionFilter: exportConnectionFilter,
+      modelIdFilter: exportModelIdFilter,
       totalTokensRange: exportTotalTokensRange,
     });
     const csv = buildCsv(rowsToExport);
@@ -491,7 +546,7 @@
     provider;
     dateRange;
     sort;
-    connectionFilter;
+    modelIdFilter;
     totalTokensRange;
     currentPage = 1;
   });
@@ -507,7 +562,7 @@
   });
 </script>
 
-<div class="space-y-4 p-6">
+<div class="space-y-4 px-6 pt-5 pb-1">
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
       <div class="ui-subtitle mt-1">Full request log.</div>
@@ -536,40 +591,15 @@
     <div class={`rounded-md border px-3 py-2 text-xs ${bannerClass(bannerKind)}`}>{bannerText}</div>
   {/if}
 
-  <UsageFilters bind:provider bind:dateRange bind:sort />
-
-  <div class="ui-card ui-pad-md">
-    <div class="grid gap-3 md:grid-cols-2">
-      <div>
-        <label class="ui-subtitle" for="history-connection-filter">Connection</label>
-        <select
-          id="history-connection-filter"
-          class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-          style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
-          bind:value={connectionFilter}
-        >
-          {#each connectionFilterOptions() as option (option.id)}
-            <option value={option.id}>{option.label}</option>
-          {/each}
-        </select>
-      </div>
-      <div>
-        <label class="ui-subtitle" for="history-total-tokens-range">Total Tokens Range</label>
-        <select
-          id="history-total-tokens-range"
-          class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-          style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
-          bind:value={totalTokensRange}
-        >
-          <option value="all">All</option>
-          <option value="0_100">0-100</option>
-          <option value="101_1000">101-1,000</option>
-          <option value="1001_10000">1,001-10,000</option>
-          <option value="10001_plus">10,001+</option>
-        </select>
-      </div>
-    </div>
-  </div>
+  <UsageFilters
+    bind:provider
+    bind:dateRange
+    bind:sort
+    showHistoryExtras={true}
+    bind:modelIdFilter
+    modelOptions={modelIdFilterOptions()}
+    bind:totalTokensRange
+  />
 
   <div class="ui-card overflow-hidden" bind:this={tableWrap}>
     <table class="ui-table text-left text-xs">
@@ -631,6 +661,9 @@
       <div class="ui-card ui-pad-lg">
         <div class="ui-title">Export CSV</div>
         <div class="ui-subtitle mt-2">Select filters for export output.</div>
+        <div class="mt-2 text-[11px]" style="color: var(--text-muted);">
+          Export uses the same filter logic as the table for provider/date/model/tokens/sort.
+        </div>
 
         <div class="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
@@ -681,14 +714,14 @@
             </select>
           </div>
           <div>
-            <label class="ui-subtitle" for="export-connection">Connection</label>
+            <label class="ui-subtitle" for="export-model-id">Model ID</label>
             <select
-              id="export-connection"
+              id="export-model-id"
               class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
               style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
-              bind:value={exportConnectionFilter}
+              bind:value={exportModelIdFilter}
             >
-              {#each connectionFilterOptions() as option (option.id)}
+              {#each modelIdFilterOptions() as option (option.id)}
                 <option value={option.id}>{option.label}</option>
               {/each}
             </select>
@@ -750,6 +783,9 @@
       <div class="ui-card ui-pad-lg">
         <div class="ui-title">Clear usage history?</div>
         <div class="ui-subtitle mt-2">Clearing removes rows from persisted usage history.</div>
+        <div class="mt-2 text-[11px]" style="color: var(--text-muted);">
+          This action is destructive and cannot be undone.
+        </div>
         <div class="mt-4 flex justify-end gap-2">
           <button
             type="button"
