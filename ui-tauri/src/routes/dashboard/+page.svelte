@@ -1,467 +1,673 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
-  import Button from "$lib/components/ui/button/button.svelte";
-  import Input from "$lib/components/ui/input/input.svelte";
+  import { onMount } from "svelte";
+  import { uiCacheGet, uiCacheSet, uiPersistentCacheGet, uiPersistentCacheSet, uiRunDeduped } from "$lib/ui_session";
 
-  // Mock Data for Dashboard
-  const kpis = [
-    { label: "Total Cost USD", value: "$1,245.50", icon: "$" },
-    { label: "Total Requests", value: "1.2M", icon: "⇄" },
-    { label: "Total Tokens", value: "850M", icon: "T" },
-    { label: "Success Rate %", value: "99.8%", icon: "✓" },
-    { label: "Avg Latency ms", value: "245ms", icon: "⚡" },
-    { label: "Active Bridges count", value: "12", icon: "B" },
+  type BannerKind = "idle" | "info" | "success" | "danger";
+  type DispatchError = { code?: string; message?: string };
+  type Kpi = { label: string; value: string; icon?: string };
+  type RecentRequest = { time: string; request_id?: string; status: string; connection?: string; provider: string; latency: string; tokens: string; cost: string };
+  type TopExpensive = { id: string; time?: string; connection?: string; provider?: string; cost: string };
+  type Breakdown = { name: string; color: string; cost: string };
+  type Trend = { label: string; valueFormatted: string };
+  type Alert = { level: string; text: string; detail?: string };
+
+  type DashboardState = {
+    kpis: Kpi[];
+    recent_requests: RecentRequest[];
+    top_expensive: TopExpensive[];
+    breakdown_legend: Breakdown[];
+    trend_data: Trend[];
+    quick_alerts: Alert[];
+  };
+
+  type DashboardResponse = {
+    ok: boolean;
+    status?: string;
+    result?: DashboardState | null;
+    text?: unknown;
+    data?: unknown;
+    error?: DispatchError | null;
+  };
+
+  const KPI_SLOTS: Array<{ label: string; valueKey: string; icon: string; t1: string; t2: string }> = [
+    { label: "Total Cost USD", valueKey: "Total Cost USD", icon: "◈", t1: "Total Cost", t2: "USD" },
+    { label: "Total Requests", valueKey: "Total Requests", icon: "⇄", t1: "Total", t2: "Requests" },
+    { label: "Total Tokens", valueKey: "Total Tokens", icon: "◎", t1: "Total", t2: "Tokens" },
+    { label: "Success Rate %", valueKey: "Success Rate %", icon: "✓", t1: "Success Rate", t2: "%" },
+    { label: "Avg Latency ms", valueKey: "Avg Latency ms", icon: "⏱", t1: "Avg Latency", t2: "ms" },
+    { label: "Active Bridges", valueKey: "Active Bridges count", icon: "⛓", t1: "Active Bridges", t2: "count" },
   ];
 
-  const recentRequests = [
-    { time: "Today, 08:03:18", status: "Status", provider: "Provider X", latency: "245ms", tokens: "100 / 850", cost: "$1,245.50" },
-    { time: "Today, 08:03:51", status: "Ceeen", provider: "Provider X", latency: "245ms", tokens: "100 / 220", cost: "$1,72.50" }, // Typo in prompt "Ceeen", sticking to "Success" logic visually but maybe keeping text? No, "Ceeen" looks like a typo in my thought, I'll use "Success"
-    { time: "Today, 08:03:34", status: "Reded", provider: "Provider X", latency: "245ms", tokens: "4501 / 202", cost: "$1,15.00" }, // "Reded" -> Error
-    { time: "Today, 08:03:43", status: "Status", provider: "Provider X", latency: "245ms", tokens: "210 / 571", cost: "$17.00" },
-  ];
+  const DEFAULT_STATE: DashboardState = {
+    kpis: [],
+    recent_requests: [],
+    top_expensive: [],
+    breakdown_legend: [],
+    trend_data: [],
+    quick_alerts: [],
+  };
 
-  const topExpensive = [
-    { id: "id-8a255ac-abbb-a2ac892...", cost: "$389.90" },
-    { id: "id-8567512-a756-b27b895...", cost: "$323.00" },
-    { id: "id-8335769-a8ac-a48bb77...", cost: "$206.00" },
-    { id: "id-83556a9-a83d-a79b895...", cost: "$199.60" },
-  ];
+  const RECENT_MIN_PAGE_SIZE = 3;
+  const RECENT_MAX_PAGE_SIZE = 10;
+  const RECENT_VIEWPORT_OFFSETS_PX = 520;
+  const RECENT_HEADER_PX = 32;
+  const RECENT_ROW_PX = 34;
+  const RECENT_MAX_ROWS = 30;
+  const TOP_EXPENSIVE_MIN_ROWS = 3;
+  const TOP_EXPENSIVE_MAX_ROWS = 6;
+  const TOP_EXPENSIVE_VIEWPORT_OFFSETS_PX = 520;
+  const TOP_EXPENSIVE_ROW_PX = 44;
+  const ALERT_COLLAPSE_VISIBLE = 3;
+  const TREND_W = 300;
+  const TREND_H = 150;
+  const TREND_PAD_X = 10;
+  const TREND_PAD_Y = 12;
+  const DONUT_CX = 50;
+  const DONUT_CY = 50;
+  const DONUT_R = 40;
+  const DONUT_STROKE = 12;
 
-  const breakdownLegend = [
-    { name: "Provider A", color: "var(--accent-base)", cost: "$747.30" },
-    { name: "Provider B", color: "#3b82f6", cost: "$349.20" },
-    { name: "Provider C", color: "#6366f1", cost: "$149.00" },
-  ];
+  let kpis = $state<Kpi[]>(DEFAULT_STATE.kpis);
+  let recentRequests = $state<RecentRequest[]>(DEFAULT_STATE.recent_requests);
+  let recentPage = $state(1);
+  let recentPageSize = $state(RECENT_MIN_PAGE_SIZE);
+  let topExpensiveVisibleRows = $state(TOP_EXPENSIVE_MIN_ROWS);
+  let topExpensive = $state<TopExpensive[]>(DEFAULT_STATE.top_expensive);
+  let breakdownLegend = $state<Breakdown[]>(DEFAULT_STATE.breakdown_legend);
+  let trendData = $state<Trend[]>(DEFAULT_STATE.trend_data);
+  let quickAlerts = $state<Alert[]>(DEFAULT_STATE.quick_alerts);
+  let alertsExpanded = $state(false);
+  let trendHoverIndex = $state<number | null>(null);
+  let breakdownHoverIndex = $state<number | null>(null);
+  let trendTooltipX = $state(0);
+  let trendTooltipY = $state(0);
+  let breakdownTooltipX = $state(0);
+  let breakdownTooltipY = $state(0);
+  let bannerKind = $state<BannerKind>("idle");
+  let bannerText = $state("");
+  let recentTableViewport: HTMLDivElement | null = null;
+  let topExpensiveViewport: HTMLDivElement | null = null;
+  let trendChartWrap: HTMLDivElement | null = null;
+  let breakdownChartWrap: HTMLDivElement | null = null;
+  const DASHBOARD_CACHE_KEY = "dashboard.state";
+  const DASHBOARD_CACHE_TTL_MS = 45000;
+  const DASHBOARD_PERSISTENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
-  const trendTicks = ["Day 1", "Day 8", "Day 16", "Day 24", "Day 30"];
-  const RECENT_VISIBLE_ROWS = 3;
+  function bannerClass(kind: BannerKind) {
+    if (kind === "success") return "border-emerald-900/40 bg-emerald-400/10 text-emerald-200";
+    if (kind === "danger") return "border-rose-900/40 bg-rose-500/10 text-rose-200";
+    if (kind === "info") return "border-slate-700/60 bg-white/5 text-slate-200";
+    return "border-slate-800 bg-transparent text-slate-200";
+  }
 
-  type HoveredSlice = { name: string; percent: number; cost: string } | null;
-  let hoveredSlice: HoveredSlice = null;
-  let tooltipX = 0;
-  let tooltipY = 0;
+  function setBanner(kind: BannerKind, text: string) {
+    bannerKind = kind;
+    bannerText = text;
+  }
 
-  type TrendHover = { label: string; valueFormatted: string } | null;
-  let trendHover: TrendHover = null;
-  let trendTipX = 0;
-  let trendTipY = 0;
+  function asDictList(value: unknown): Record<string, unknown>[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter((v) => typeof v === "object" && v !== null) as Record<string, unknown>[];
+  }
 
-  function parseUsd(input: string) {
-    const n = Number(input.replace(/[$,]/g, ""));
+  function normalizeState(state: DashboardState | null | undefined): DashboardState {
+    const src = state ?? DEFAULT_STATE;
+    return {
+      kpis: asDictList(src.kpis).map((v) => ({ label: String(v.label || ""), value: String(v.value || ""), icon: String(v.icon || "") })),
+      recent_requests: asDictList(src.recent_requests).map((v) => ({ time: String(v.time || ""), request_id: String(v.request_id || ""), status: String(v.status || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), latency: String(v.latency || ""), tokens: String(v.tokens || ""), cost: String(v.cost || "") })),
+      top_expensive: asDictList(src.top_expensive).map((v) => ({ id: String(v.id || ""), time: String(v.time || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), cost: String(v.cost || "") })),
+      breakdown_legend: asDictList(src.breakdown_legend).map((v) => ({ name: String(v.name || ""), color: String(v.color || "#64748b"), cost: String(v.cost || "") })),
+      trend_data: asDictList(src.trend_data).map((v) => ({ label: String(v.label || ""), valueFormatted: String(v.valueFormatted || "") })),
+      quick_alerts: asDictList(src.quick_alerts).map((v) => ({ level: String(v.level || "info"), text: String(v.text || ""), detail: String(v.detail || "") })),
+    };
+  }
+
+  function applyState(state: DashboardState | null | undefined) {
+    const next = normalizeState(state);
+    kpis = next.kpis;
+    recentRequests = next.recent_requests;
+    topExpensive = next.top_expensive;
+    breakdownLegend = next.breakdown_legend;
+    trendData = next.trend_data;
+    quickAlerts = next.quick_alerts;
+    recentPage = 1;
+    alertsExpanded = false;
+    trendHoverIndex = null;
+    breakdownHoverIndex = null;
+  }
+
+  function kpiValue(label: string): string {
+    const row = kpis.find((item) => item.label === label);
+    const value = String(row?.value || "").trim();
+    return value || "-";
+  }
+  function kpiValueByKey(key: string): string {
+    const row = kpis.find((item) => item.label === key);
+    const value = String(row?.value || "").trim();
+    return value || "-";
+  }
+
+  function parseJsonCandidate(value: unknown): Record<string, unknown> | null {
+    if (typeof value !== "string") return null;
+    const raw = value.trim();
+    if (!raw.startsWith("{")) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function asState(candidate: unknown): DashboardState | null {
+    if (!candidate || typeof candidate !== "object") return null;
+    const obj = candidate as Record<string, unknown>;
+    const hasDashboardKeys = Array.isArray(obj.kpis) || Array.isArray(obj.recent_requests) || Array.isArray(obj.top_expensive) || Array.isArray(obj.breakdown_legend) || Array.isArray(obj.trend_data) || Array.isArray(obj.quick_alerts);
+    return hasDashboardKeys ? (obj as unknown as DashboardState) : null;
+  }
+
+  function responseState(result: DashboardResponse & Record<string, unknown>): DashboardState | null {
+    const direct = asState(result.result);
+    if (direct) return direct;
+    const dataObj = result.data && typeof result.data === "object" ? (result.data as Record<string, unknown>) : null;
+    if (dataObj) return asState(dataObj.result) ?? asState(dataObj);
+    if (result.text && typeof result.text === "object") {
+      const textObj = result.text as Record<string, unknown>;
+      return asState(textObj.result) ?? asState(textObj);
+    }
+    const parsed = parseJsonCandidate(result.text);
+    if (parsed) return asState(parsed.result) ?? asState(parsed);
+    return null;
+  }
+
+  async function dispatchInvoke(promptPayload: Record<string, unknown>): Promise<DashboardResponse> {
+    const tauriGlobal = typeof window !== "undefined" ? (window as any).__TAURI__ ?? (window as any).__TAURI_INTERNALS__ : null;
+    if (!tauriGlobal) return { ok: false, status: "error", error: { code: "desktop_required", message: "Desktop app required" } };
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke("dispatch_execute_request_v1", { agentId: "dashboard", agent_id: "dashboard", prompt: JSON.stringify(promptPayload) }) as DashboardResponse;
+  }
+
+  async function loadDashboardState(fromGlobalRefresh = false) {
+    setBanner("idle", "");
+    try {
+      const result = await uiRunDeduped(DASHBOARD_CACHE_KEY, async () => await dispatchInvoke({ op: "dashboard.get_state" }));
+      if (!result.ok) {
+        const code = result.error?.code ? `${result.error.code}: ` : "";
+        const message = result.error?.message || "request failed";
+        setBanner("danger", `Dashboard load failed: ${code}${message}`);
+        return;
+      }
+      const state = responseState(result as DashboardResponse & Record<string, unknown>);
+      const normalized = normalizeState(state);
+      applyState(normalized);
+      if (state) {
+        uiCacheSet(DASHBOARD_CACHE_KEY, normalized);
+        uiPersistentCacheSet(DASHBOARD_CACHE_KEY, normalized);
+      } else {
+        uiCacheSet(DASHBOARD_CACHE_KEY, null);
+      }
+      if (fromGlobalRefresh) {
+        setBanner("success", "Dashboard refreshed.");
+        window.setTimeout(() => {
+          if (bannerKind === "success") setBanner("idle", "");
+        }, 1200);
+      }
+    } catch (err: any) {
+      setBanner("danger", `Dashboard load failed: ${err?.message || String(err)}`);
+    }
+  }
+
+  function parseUsd(value: string): number {
+    const n = Number.parseFloat(String(value || "").replace(/[^0-9.\-]/g, ""));
     return Number.isFinite(n) ? n : 0;
   }
 
-  function formatUsd(n: number) {
-    return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  function formatShortDate(raw: string): string {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return String(raw || "").slice(-5) || "--";
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${mm}/${dd}`;
   }
 
-  const providerList = (() => {
-    const byName = new Map(breakdownLegend.map((p) => [p.name, p] as const));
-    const a = byName.get("Provider A");
-    const b = byName.get("Provider B");
-    const c = byName.get("Provider C");
-    const knownTotal = [a, b, c].reduce((sum, p) => sum + (p ? parseUsd(p.cost) : 0), 0);
-    const total = breakdownLegend.reduce((sum, p) => sum + parseUsd(p.cost), 0);
-    const othersCost = Math.max(0, total - knownTotal);
-    return [
-      { name: "Provider A", color: a?.color ?? "var(--accent-base)", cost: a?.cost ?? "$0.00", value: a ? parseUsd(a.cost) : 0 },
-      { name: "Provider B", color: b?.color ?? "#3b82f6", cost: b?.cost ?? "$0.00", value: b ? parseUsd(b.cost) : 0 },
-      { name: "Provider C", color: c?.color ?? "#6366f1", cost: c?.cost ?? "$0.00", value: c ? parseUsd(c.cost) : 0 },
-      { name: "Others", color: "rgba(148, 163, 184, 0.55)", cost: formatUsd(othersCost), value: othersCost },
-    ];
-  })();
-
-  const donutSegments = (() => {
-    const r = 40;
-    const circumference = 2 * Math.PI * r;
-    const base = [...providerList].sort((a, b) => {
-      if (a.name === "Others" && b.name !== "Others") return 1;
-      if (b.name === "Others" && a.name !== "Others") return -1;
-      return b.value - a.value;
+  function trendPath(rows: Trend[]) {
+    if (rows.length === 0) return { line: "", area: "", ticks: [] as string[], points: [] as Array<{ x: number; y: number; label: string; formatted: string }> };
+    const values = rows.map((r) => parseUsd(r.valueFormatted));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const upper = max === min ? max + 1 : max;
+    const stepX = rows.length > 1 ? (TREND_W - TREND_PAD_X * 2) / (rows.length - 1) : 0;
+    const points = rows.map((r, i) => {
+      const ratio = (upper - values[i]) / (upper - min);
+      return { x: TREND_PAD_X + stepX * i, y: TREND_PAD_Y + ratio * (TREND_H - TREND_PAD_Y * 2), label: formatShortDate(r.label), formatted: r.valueFormatted || "$0.00" };
     });
-
-    const total = base.reduce((sum, r) => sum + r.value, 0);
-    const rawPercents = base.map((r) => (total > 0 ? (r.value / total) * 100 : 0));
-    const roundedPercents: number[] = [];
-    for (let i = 0; i < rawPercents.length; i++) {
-      if (i === rawPercents.length - 1) {
-        const used = roundedPercents.reduce((s, p) => s + p, 0);
-        roundedPercents.push(Math.max(0, Math.round(100 - used)));
-      } else {
-        roundedPercents.push(Math.max(0, Math.round(rawPercents[i] ?? 0)));
-      }
-    }
-
-    const labels = [];
-    let accLen = 0;
-    let accPercent = 0;
-    for (let i = 0; i < base.length; i++) {
-      const seg = base[i]!;
-      const percent = roundedPercents[i] ?? 0;
-      const len = (circumference * percent) / 100;
-      const dashOffset = -accLen;
-      const startDeg = -90 + accPercent * 3.6;
-      const midDeg = startDeg + percent * 1.8;
-      const rad = (midDeg * Math.PI) / 180;
-
-      const rLine1 = r + 1;
-      const rLine2 = r + 6;
-      const rTextBase = r + 12;
-
-      const x1 = 50 + rLine1 * Math.cos(rad);
-      const y1 = 50 + rLine1 * Math.sin(rad);
-      const x2Base = 50 + rLine2 * Math.cos(rad);
-      const y2Base = 50 + rLine2 * Math.sin(rad);
-      const xTextBase = 50 + rTextBase * Math.cos(rad);
-      const yTextBase = 50 + rTextBase * Math.sin(rad);
-
-      const textAnchor = Math.abs(xTextBase - 50) < 7 ? "middle" : xTextBase > 50 ? "start" : "end";
-
-      labels.push({
-        name: seg.name,
-        color: seg.color,
-        percent,
-        value: seg.value,
-        cost: seg.cost,
-        len,
-        dashOffset,
-        x1,
-        y1,
-        x2: x2Base,
-        y2: y2Base,
-        xText: xTextBase,
-        yText: yTextBase,
-        textAnchor,
-      });
-
-      accLen += len;
-      accPercent += percent;
-    }
-
-    labels.sort((a, b) => a.yText - b.yText);
-    for (let i = 1; i < labels.length; i++) {
-      const prev = labels[i - 1]!;
-      const cur = labels[i]!;
-      if (Math.abs(cur.yText - prev.yText) < 10) {
-        cur.x2 = 50 + (r + 8) * Math.cos(Math.atan2(cur.y2 - 50, cur.x2 - 50));
-        cur.y2 = 50 + (r + 8) * Math.sin(Math.atan2(cur.y2 - 50, cur.x2 - 50));
-        cur.xText = 50 + (r + 16) * Math.cos(Math.atan2(cur.yText - 50, cur.xText - 50));
-        cur.yText = 50 + (r + 16) * Math.sin(Math.atan2(cur.yText - 50, cur.xText - 50));
-      }
-    }
-
-    return labels;
-  })();
-
-  function updateTooltipPos(event: MouseEvent) {
-    const x = event.clientX + 12;
-    const y = event.clientY + 12;
-    tooltipX = Math.min(x, window.innerWidth - 160);
-    tooltipY = Math.min(y, window.innerHeight - 96);
+    const line = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+    const baseY = TREND_H - TREND_PAD_Y;
+    const area = `${line} L ${points[points.length - 1].x} ${baseY} L ${points[0].x} ${baseY} Z`;
+    const tickCount = rows.length <= 4 ? rows.length : 5;
+    const idx = Array.from({ length: tickCount }, (_, i) => Math.round(((rows.length - 1) * i) / (tickCount - 1 || 1)));
+    const ticks = [...new Set(idx)].map((i) => points[i]?.label || "--");
+    return { line, area, ticks, points };
   }
 
-  const trendData = [
-    { label: "Day 1", valueFormatted: "$98.20" },
-    { label: "Day 4", valueFormatted: "$112.35" },
-    { label: "Day 7", valueFormatted: "$105.10" },
-    { label: "Day 10", valueFormatted: "$134.40" },
-    { label: "Day 13", valueFormatted: "$128.00" },
-    { label: "Day 16", valueFormatted: "$162.75" },
-    { label: "Day 19", valueFormatted: "$149.30" },
-    { label: "Day 22", valueFormatted: "$171.90" },
-    { label: "Day 25", valueFormatted: "$158.60" },
-    { label: "Day 28", valueFormatted: "$189.15" },
-    { label: "Day 30", valueFormatted: "$176.25" },
-  ];
+  function donutSegments(rows: Breakdown[]) {
+    const ranked = rows.map((r) => ({ ...r, value: parseUsd(r.cost) })).sort((a, b) => b.value - a.value);
+    const top = ranked.slice(0, 3);
+    const rest = ranked.slice(3);
+    const others = rest.reduce((s, r) => s + r.value, 0);
+    const merged = [...top];
+    if (others > 0) merged.push({ name: "Others", color: "#64748b", cost: `$${others.toFixed(2)}`, value: others });
+    const nonZero = merged.filter((r) => r.value > 0);
+    const total = nonZero.reduce((s, r) => s + r.value, 0);
+    let cursor = 0;
+    return nonZero.map((r) => {
+      const pct = total > 0 ? (r.value / total) * 100 : 0;
+      const start = cursor;
+      const end = cursor + pct * 3.6;
+      cursor = end;
+      return { ...r, pct, start, end };
+    });
+  }
 
-  function updateTrendHover(event: MouseEvent) {
-    const el = event.currentTarget as HTMLElement | null;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const width = Math.max(1, rect.width);
-    const mouseX = Math.min(Math.max(0, event.clientX - rect.left), width);
-    const idx = Math.min(trendData.length - 1, Math.max(0, Math.round((mouseX / width) * (trendData.length - 1))));
-    trendHover = trendData[idx] ?? null;
-    const x = event.clientX + 12;
-    const y = event.clientY + 12;
-    trendTipX = Math.min(x, window.innerWidth - 160);
-    trendTipY = Math.min(y, window.innerHeight - 72);
+  function arcPath(startAngle: number, endAngle: number): string {
+    const span = Math.min(359.99, Math.max(0.01, endAngle - startAngle));
+    const end = startAngle + span;
+    const toXY = (r: number, a: number) => {
+      const rad = (a - 90) * (Math.PI / 180);
+      return { x: DONUT_CX + r * Math.cos(rad), y: DONUT_CY + r * Math.sin(rad) };
+    };
+    const outerStart = toXY(DONUT_R, startAngle);
+    const outerEnd = toXY(DONUT_R, end);
+    const innerStart = toXY(DONUT_R - DONUT_STROKE, end);
+    const innerEnd = toXY(DONUT_R - DONUT_STROKE, startAngle);
+    const large = span > 180 ? 1 : 0;
+    return `M ${outerStart.x} ${outerStart.y} A ${DONUT_R} ${DONUT_R} 0 ${large} 1 ${outerEnd.x} ${outerEnd.y} L ${innerStart.x} ${innerStart.y} A ${DONUT_R - DONUT_STROKE} ${DONUT_R - DONUT_STROKE} 0 ${large} 0 ${innerEnd.x} ${innerEnd.y} Z`;
+  }
+
+  function normalizeAlertLevel(level: string): "critical" | "warning" | "info" {
+    const v = String(level || "").toLowerCase();
+    if (v.includes("danger") || v.includes("critical") || v.includes("error")) return "critical";
+    if (v.includes("warn")) return "warning";
+    return "info";
+  }
+
+  function orderedAlerts(rows: Alert[]): Alert[] {
+    const norm = [...rows];
+    const success = norm.filter((a) => /success\s*rate/i.test(a.text));
+    const budget = norm.filter((a) => !/success\s*rate/i.test(a.text) && /budget|threshold|quota|limit|spend/i.test(a.text));
+    const other = norm.filter((a) => !success.includes(a) && !budget.includes(a));
+    const rank = (alert: Alert): number => {
+      const lvl = normalizeAlertLevel(alert.level);
+      if (lvl === "critical") return 0;
+      if (lvl === "warning") return 1;
+      return 2;
+    };
+    budget.sort((a, b) => rank(a) - rank(b));
+    return [...success, ...budget, ...other];
+  }
+
+  function visibleAlerts(rows: Alert[]): Alert[] {
+    if (rows.length <= ALERT_COLLAPSE_VISIBLE || alertsExpanded) return rows;
+    return rows.slice(0, ALERT_COLLAPSE_VISIBLE);
+  }
+
+  function formatRequestTime(raw: string): string {
+    const value = String(raw || "").trim();
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value.length > 19 ? `${value.slice(0, 19)}...` : value;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+  }
+
+  function recentWindow(): RecentRequest[] {
+    return recentRequests.slice(0, RECENT_MAX_ROWS);
+  }
+
+  function recomputeRecentPageSize() {
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+    const tableHeight = recentTableViewport?.clientHeight || 0;
+    const h = tableHeight > 0 ? tableHeight : (viewportHeight - RECENT_VIEWPORT_OFFSETS_PX);
+    if (h <= 0) return;
+    const next = Math.max(
+      RECENT_MIN_PAGE_SIZE,
+      Math.min(RECENT_MAX_PAGE_SIZE, Math.floor((h - RECENT_HEADER_PX - 8) / RECENT_ROW_PX))
+    );
+    if (next !== recentPageSize) {
+      recentPageSize = next;
+      if (recentPage > totalRecentPages()) recentPage = totalRecentPages();
+    }
+  }
+
+  function totalRecentPages(): number {
+    return Math.max(1, Math.ceil(recentWindow().length / recentPageSize));
+  }
+
+  function recentRowsForCurrentPage(): RecentRequest[] {
+    const start = (recentPage - 1) * recentPageSize;
+    return recentWindow().slice(start, start + recentPageSize);
+  }
+
+  function canPrevRecentPage(): boolean {
+    return recentPage > 1;
+  }
+
+  function canNextRecentPage(): boolean {
+    return recentPage < totalRecentPages();
+  }
+
+  function prevRecentPage() {
+    if (canPrevRecentPage()) recentPage -= 1;
+  }
+
+  function nextRecentPage() {
+    if (canNextRecentPage()) recentPage += 1;
+  }
+
+  function topPrimary(item: TopExpensive): string {
+    const connection = String(item.connection || "").trim();
+    const provider = String(item.provider || "").trim();
+    if (connection && provider && connection.toLowerCase() !== provider.toLowerCase()) {
+      return `${provider} / ${connection}`;
+    }
+    return connection || provider || "Provider";
+  }
+
+  function topSecondary(item: TopExpensive): string {
+    const rawTime = String(item.time || "");
+    const d = new Date(rawTime);
+    const shortTime = Number.isNaN(d.getTime())
+      ? (rawTime ? rawTime.slice(0, 16) : "-")
+      : `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const reqId = String(item.id || "").trim();
+    const shortId = reqId ? `#${reqId.slice(-8)}` : "#-";
+    return `${shortTime} | ${shortId}`;
+  }
+
+  function requestConnectionProvider(req: RecentRequest): string {
+    const connection = String(req.connection || "").trim();
+    const provider = String(req.provider || "").trim();
+    if (connection && provider && connection.toLowerCase() !== provider.toLowerCase()) {
+      return `${connection} / ${provider}`;
+    }
+    return connection || provider || "-";
+  }
+
+  function recomputeTopExpensiveVisibleRows() {
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+    const boxHeight = topExpensiveViewport?.clientHeight || 0;
+    const h = boxHeight > 0 ? boxHeight : (viewportHeight - TOP_EXPENSIVE_VIEWPORT_OFFSETS_PX);
+    if (h <= 0) return;
+    const next = Math.max(
+      TOP_EXPENSIVE_MIN_ROWS,
+      Math.min(TOP_EXPENSIVE_MAX_ROWS, Math.floor(h / TOP_EXPENSIVE_ROW_PX))
+    );
+    if (next !== topExpensiveVisibleRows) topExpensiveVisibleRows = next;
+  }
+
+  function tokenTotalTooltip(tokens: string): string {
+    const m = String(tokens || "").match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+    if (!m) return "";
+    const total = Number.parseInt(m[1], 10) + Number.parseInt(m[2], 10);
+    return `Total: ${total}`;
+  }
+
+  function updateTrendTooltip(event: MouseEvent) {
+    if (!trendChartWrap) return;
+    const rect = trendChartWrap.getBoundingClientRect();
+    trendTooltipX = event.clientX - rect.left + 10;
+    trendTooltipY = event.clientY - rect.top - 14;
+  }
+
+  function updateBreakdownTooltip(event: MouseEvent) {
+    if (!breakdownChartWrap) return;
+    const rect = breakdownChartWrap.getBoundingClientRect();
+    breakdownTooltipX = event.clientX - rect.left + 10;
+    breakdownTooltipY = event.clientY - rect.top - 14;
   }
 
   function getStatusColor(status: string) {
-    if (status.includes("Ceeen") || status.includes("Success") || status === "Status") return "text-emerald-400 bg-emerald-400/10"; // Assuming "Status" is success for now or generic
-    if (status.includes("Reded") || status.includes("Error") || status === "Failure") return "text-rose-400 bg-rose-400/10";
+    if (status.includes("Success") || status === "Status") return "text-emerald-400 bg-emerald-400/10";
+    if (status.includes("Error") || status.includes("Failure")) return "text-rose-400 bg-rose-400/10";
     return "text-slate-400 bg-slate-400/10";
   }
+
+  onMount(() => {
+    const persistent = uiPersistentCacheGet<DashboardState | null>(DASHBOARD_CACHE_KEY, DASHBOARD_PERSISTENT_CACHE_TTL_MS);
+    if (persistent) applyState(persistent);
+    const cached = uiCacheGet<DashboardState | null>(DASHBOARD_CACHE_KEY, DASHBOARD_CACHE_TTL_MS);
+    let refreshDelayMs = 0;
+    if (cached) {
+      applyState(cached);
+      refreshDelayMs = 90;
+    } else if (persistent) {
+      refreshDelayMs = 90;
+    }
+    window.setTimeout(() => {
+      void loadDashboardState();
+    }, refreshDelayMs);
+    // Emergency perf mode: disable background polling and focus-triggered refreshes.
+    // Dashboard refresh stays manual via global refresh button event.
+    const handleGlobalRefresh = () => void loadDashboardState(true);
+    const handleWindowResize = () => {
+      recomputeRecentPageSize();
+      recomputeTopExpensiveVisibleRows();
+    };
+    window.addEventListener("synapse:global-refresh", handleGlobalRefresh as EventListener);
+    window.addEventListener("resize", handleWindowResize);
+    const ro = new ResizeObserver(() => recomputeRecentPageSize());
+    if (recentTableViewport) ro.observe(recentTableViewport);
+    const roTop = new ResizeObserver(() => recomputeTopExpensiveVisibleRows());
+    if (topExpensiveViewport) roTop.observe(topExpensiveViewport);
+    window.setTimeout(() => recomputeRecentPageSize(), 0);
+    window.setTimeout(() => recomputeTopExpensiveVisibleRows(), 0);
+    return () => {
+      window.removeEventListener("synapse:global-refresh", handleGlobalRefresh as EventListener);
+      window.removeEventListener("resize", handleWindowResize);
+      ro.disconnect();
+      roTop.disconnect();
+    };
+  });
 </script>
 
-<div class="space-y-4 p-5">
-  <!-- Row 1: KPIs -->
+<div class="space-y-4 px-5 pt-4 pb-0 overflow-x-hidden">
+  {#if bannerText}
+    <div class={`rounded-md border px-3 py-2 text-xs ${bannerClass(bannerKind)}`}>{bannerText}</div>
+  {/if}
+
   <div class="grid grid-cols-6 gap-3">
-    {#each kpis as kpi}
-      <div 
-        class="flex min-w-0 flex-col justify-between rounded-2xl border p-3 shadow-sm transition-all hover:-translate-y-0.5"
-        style="
-          background-color: var(--surface-1); 
-          border-color: var(--border-subtle);
-          box-shadow: var(--shadow-1);
-          height: 110px;
-        "
-      >
+    {#each KPI_SLOTS as slot (slot.label)}
+      <div class="flex min-w-0 flex-col justify-between rounded-2xl border p-3 shadow-sm transition-all hover:-translate-y-0.5" style="background-color: var(--surface-1); border-color: var(--border-subtle); box-shadow: var(--shadow-1); height: 110px;">
         <div class="flex min-w-0 items-start justify-between gap-2">
-          <div class="min-w-0 text-[11px] font-medium leading-[1.1] text-slate-400">
-            {#if kpi.label === "Total Cost USD"}
-              <div>Total Cost</div>
-              <div>USD</div>
-            {:else if kpi.label === "Total Requests"}
-              <div>Total</div>
-              <div>Requests</div>
-            {:else if kpi.label === "Total Tokens"}
-              <div>Total</div>
-              <div>Tokens</div>
-            {:else if kpi.label === "Avg Latency ms"}
-              <div>Avg Latency</div>
-              <div>ms</div>
-            {:else if kpi.label === "Active Bridges count"}
-              <div>Active Bridges</div>
-              <div>count</div>
-            {:else if kpi.label === "Success Rate %"}
-              <div>Success Rate</div>
-              <div>%</div>
-            {:else}
-              <div>{kpi.label}</div>
-              <div>&nbsp;</div>
-            {/if}
+          <div class="min-w-0 text-[12px] font-medium leading-[1.1] text-slate-400">
+            <div>{slot.t1}</div>
+            <div>{slot.t2}</div>
           </div>
-          <span class="shrink-0 text-xs text-slate-500 opacity-60">
-            {#if kpi.label === "Avg Latency ms"}
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M13 2L3 14h7l-1 8 12-14h-7l1-6z" />
-              </svg>
-            {:else}
-              {kpi.icon}
-            {/if}
-          </span>
+          <span class="shrink-0 text-xs text-slate-400 opacity-80">{slot.icon}</span>
         </div>
-        <div class="mt-2 text-xl font-semibold tracking-tight text-white">
-          {kpi.value}
-        </div>
+        <div class="mt-1.5 text-xl font-semibold tracking-tight text-white">{kpiValueByKey(slot.valueKey)}</div>
       </div>
     {/each}
   </div>
 
-  <!-- Row 2: Charts & Alerts -->
   <div class="grid grid-cols-3 gap-4">
-    <!-- Cost Trend -->
-    <div 
-      class="col-span-1 rounded-2xl border p-4 shadow-sm"
-      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;"
-    >
+    <div class="col-span-1 rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Cost Trend (Last 30 Days)</h3>
-      <div class="relative w-full" style="height: 172px;" role="img" aria-label="Cost trend chart" on:mousemove={updateTrendHover} on:mouseleave={() => (trendHover = null)}>
-        <!-- Placeholder SVG Chart -->
-        <svg viewBox="0 0 300 150" class="h-full w-full overflow-visible">
-           <defs>
-            <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="var(--accent-base)" stop-opacity="0.2" />
-              <stop offset="100%" stop-color="var(--accent-base)" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <path 
-            d="M0,120 L30,100 L60,110 L90,80 L120,90 L150,50 L180,70 L210,40 L240,60 L270,30 L300,50" 
-            fill="none" 
-            stroke="var(--accent-base)" 
-            stroke-width="2"
-            vector-effect="non-scaling-stroke"
-          />
-          <path 
-            d="M0,120 L30,100 L60,110 L90,80 L120,90 L150,50 L180,70 L210,40 L240,60 L270,30 L300,50 V150 H0 Z" 
-            fill="url(#gradient)" 
-            stroke="none"
-          />
-        </svg>
-      </div>
-      <div class="mt-2 flex justify-between pb-2 text-[10px] text-slate-500">
-        {#each trendTicks as t (t)}
-          <div>{t}</div>
-        {/each}
-      </div>
+      {#if trendData.length > 0}
+        {@const tm = trendPath(trendData)}
+        <div class="relative w-full" style="height: 172px;" bind:this={trendChartWrap}>
+          <svg viewBox={`0 0 ${TREND_W} ${TREND_H}`} class="h-full w-full overflow-visible">
+            <defs>
+              <linearGradient id="trend-gradient-live" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="var(--accent-base)" stop-opacity="0.14" />
+                <stop offset="100%" stop-color="var(--accent-base)" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={tm.area} fill="url(#trend-gradient-live)" stroke="none" />
+            <path d={tm.line} fill="none" stroke="var(--accent-base)" stroke-width="1.75" vector-effect="non-scaling-stroke" />
+            {#each tm.points as point, idx (`${point.label}-${idx}`)}
+              <circle cx={point.x} cy={point.y} r={trendHoverIndex === idx ? 3.5 : 2.5} fill="rgba(148,163,184,0.9)" stroke="rgba(30,41,59,0.6)" stroke-width="0.8" onmouseenter={() => (trendHoverIndex = idx)} onmousemove={updateTrendTooltip} onmouseleave={() => (trendHoverIndex = null)} />
+            {/each}
+          </svg>
+          {#if trendHoverIndex !== null && tm.points[trendHoverIndex]}
+            <div class="pointer-events-none absolute rounded-md border px-2 py-1 text-[12px] leading-5 text-slate-100" style={`left:${trendTooltipX}px; top:${trendTooltipY}px; transform: translateY(-100%); background-color: rgba(2,6,23,0.92); border-color: rgba(100,116,139,0.45);`}>
+              <div>{tm.points[trendHoverIndex].label}</div>
+              <div class="font-medium">{tm.points[trendHoverIndex].formatted}</div>
+            </div>
+          {/if}
+        </div>
+        <div class="mt-2 flex justify-between px-2 pb-1 text-[11px] text-slate-400/90">
+          {#each tm.ticks as t, i (`tick-${i}`)}
+            <div class="min-w-[44px] text-center">{t}</div>
+          {/each}
+        </div>
+      {:else}
+        <div class="text-xs text-slate-500">No data.</div>
+      {/if}
     </div>
 
-    <!-- Cost Breakdown -->
-    <div 
-      class="col-span-1 rounded-2xl border p-4 shadow-sm"
-      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;"
-    >
+    <div class="col-span-1 rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Cost Breakdown by Provider</h3>
-      <div class="flex items-center justify-center" style="height: 150px;">
-        <!-- Simple Donut Chart SVG -->
-        <svg width="128" height="128" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="40" fill="none" stroke="#21262d" stroke-width="12" />
-          {#each donutSegments.filter((s) => s.value > 0) as seg (seg.name)}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              fill="none"
-              stroke={seg.color}
-              stroke-width="12"
-              stroke-dasharray={`${seg.len} ${2 * Math.PI * 40}`}
-              stroke-dashoffset={seg.dashOffset}
-              transform="rotate(-90 50 50)"
-              role="img"
-              aria-label={seg.name}
-              on:mouseenter={() => (hoveredSlice = { name: seg.name, percent: seg.percent, cost: seg.cost })}
-              on:mousemove={(e) => updateTooltipPos(e)}
-              on:mouseleave={() => (hoveredSlice = null)}
-            />
-          {/each}
-          {#each donutSegments.filter((s) => s.value > 0 && s.percent >= 6) as seg (seg.name + '-leader')}
-            <line x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.color} stroke-width="1" />
-            <text x={seg.xText} y={seg.yText} text-anchor={seg.textAnchor} font-size="9" font-weight="600" fill={seg.color}>
-              {seg.percent}%
-            </text>
-          {/each}
-        </svg>
-      </div>
-      <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-        {#each providerList as row (row.name)}
-          <div class="flex min-w-0 items-center gap-2 text-[11px] text-slate-300">
-            <span class="h-2 w-2 shrink-0 rounded-full" style={`background-color: ${row.color};`}></span>
-            <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{row.name}</span>
+      {#if breakdownLegend.length > 0}
+        {@const segs = donutSegments(breakdownLegend)}
+        {#if segs.length > 0}
+          <div class="flex items-center justify-center" style="height: 145px;">
+            <div class="relative" bind:this={breakdownChartWrap}>
+              <svg width="132" height="132" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#21262d" stroke-width={DONUT_STROKE} />
+                {#each segs as seg, idx (`${seg.name}-${idx}`)}
+                  <path d={arcPath(seg.start, seg.end)} fill={seg.color} opacity={breakdownHoverIndex === null || breakdownHoverIndex === idx ? 1 : 0.35} onmouseenter={() => (breakdownHoverIndex = idx)} onmousemove={updateBreakdownTooltip} onmouseleave={() => (breakdownHoverIndex = null)} />
+                {/each}
+              </svg>
+              {#if breakdownHoverIndex !== null && segs[breakdownHoverIndex]}
+                <div class="pointer-events-none absolute rounded-md border px-2 py-1 text-[11px] leading-4 text-slate-100" style={`left:${breakdownTooltipX}px; top:${breakdownTooltipY}px; transform: translateY(-100%); background-color: rgba(2,6,23,0.92); border-color: rgba(100,116,139,0.45);`}>
+                  <div>{segs[breakdownHoverIndex].name}</div>
+                  <div class="font-medium">{segs[breakdownHoverIndex].cost} ({segs[breakdownHoverIndex].pct.toFixed(1)}%)</div>
+                </div>
+              {/if}
+            </div>
           </div>
-        {/each}
-      </div>
+          <div class="mt-2 grid grid-cols-2 justify-center gap-x-5 gap-y-1.5 px-2 text-[11px] text-slate-300">
+            {#each segs as row, idx (`legend-${row.name}-${idx}`)}
+              <div class={`inline-flex items-center gap-2 min-w-0 ${segs.length % 2 === 1 && idx === segs.length - 1 ? "col-span-2 justify-self-center" : "justify-self-start"}`}>
+                <span class="h-2 w-2 rounded-full" style={`background-color: ${row.color};`}></span>
+                <span>{row.name}</span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="text-xs text-slate-500">No data.</div>
+        {/if}
+      {:else}
+        <div class="text-xs text-slate-500">No data.</div>
+      {/if}
     </div>
 
-    <!-- Quick Health Alerts -->
-    <div 
-      class="col-span-1 rounded-2xl border p-4 shadow-sm"
-      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;"
-    >
+    <div class="col-span-1 rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Quick Health Alerts</h3>
-      <div class="space-y-2">
-        <div class="flex items-center gap-3 rounded-lg border border-red-900/30 bg-red-900/10 px-3 py-2">
-          <span class="text-xs text-red-400">⚠️</span>
-          <span class="text-xs font-medium text-red-200">High Latency on Provider X</span>
+      {#if orderedAlerts(quickAlerts).length > 0}
+        <div class="space-y-2">
+          {#each visibleAlerts(orderedAlerts(quickAlerts)) as alert (alert.text)}
+            {@const lvl = normalizeAlertLevel(alert.level)}
+            <div class={`flex items-start gap-3 rounded-lg px-3 py-2 ${lvl === "critical" ? "border border-red-900/30 bg-red-900/10" : lvl === "warning" ? "border border-amber-900/30 bg-amber-900/10" : "border border-slate-700/40 bg-slate-700/20"}`}>
+              <span class={`text-xs ${lvl === "critical" ? "text-red-400" : lvl === "warning" ? "text-amber-400" : "text-slate-300"}`}>{lvl === "critical" ? "!" : lvl === "warning" ? "i" : "*"}</span>
+              <span class="flex min-w-0 flex-col">
+                <span class={`text-xs font-medium ${lvl === "critical" ? "text-red-200" : lvl === "warning" ? "text-amber-200" : "text-slate-200"}`}>{alert.text}</span>
+                {#if alert.detail}
+                  <span class="text-[10px] text-slate-300/80">{alert.detail}</span>
+                {/if}
+              </span>
+            </div>
+          {/each}
         </div>
-        <div class="flex items-center gap-3 rounded-lg border border-amber-900/30 bg-amber-900/10 px-3 py-2">
-          <span class="text-xs text-amber-400">⚡</span>
-          <span class="text-xs font-medium text-amber-200">Budget threshold nearing</span>
-        </div>
-      </div>
+        {#if orderedAlerts(quickAlerts).length > ALERT_COLLAPSE_VISIBLE}
+          <div class="mt-2 flex justify-end">
+            <button type="button" class="rounded-md border px-2 py-1 text-[11px] text-slate-300 hover:bg-white/5" style="border-color: var(--border-subtle);" onclick={() => (alertsExpanded = !alertsExpanded)}>
+              {alertsExpanded ? "Show less" : `Show ${orderedAlerts(quickAlerts).length - ALERT_COLLAPSE_VISIBLE} more`}
+            </button>
+          </div>
+        {/if}
+      {:else}
+        <div class="text-xs text-slate-500">No data.</div>
+      {/if}
     </div>
   </div>
 
-  <!-- Row 3: Tables -->
   <div class="grid grid-cols-3 gap-4">
-    <!-- Recent Requests -->
-    <div 
-      class="col-span-2 flex flex-col rounded-2xl border p-4 shadow-sm"
-      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 240px;"
-    >
+    <div class="col-span-2 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Recent Requests</h3>
-      <div class="flex-1 overflow-hidden rounded-lg border" style="border-color: var(--border-subtle);">
-        <table class="w-full table-fixed text-left text-xs">
+      <div class="flex-1 overflow-hidden rounded-lg border" style="border-color: var(--border-subtle);" bind:this={recentTableViewport}>
+        <table class="w-full table-fixed text-left text-[11px] leading-4">
           <colgroup>
-            <col style="width: clamp(140px, 26%, 190px);" />
-            <col style="width: clamp(64px, 10%, 78px);" />
-            <col style="width: clamp(110px, 18%, 140px);" />
-            <col style="width: clamp(64px, 10%, 78px);" />
-            <col style="width: clamp(92px, 16%, 120px);" />
-            <col style="width: clamp(72px, 12%, 88px);" />
+            <col style="width: 24%;" />
+            <col style="width: 12%;" />
+            <col style="width: 22%;" />
+            <col style="width: 12%;" />
+            <col style="width: 15%;" />
+            <col style="width: 15%;" />
           </colgroup>
           <thead class="bg-slate-900/50 text-slate-400">
             <tr>
-              <th class="px-3 py-2 font-medium whitespace-nowrap overflow-hidden text-ellipsis">Time</th>
-              <th class="px-3 py-2 font-medium whitespace-nowrap overflow-hidden text-ellipsis">Status</th>
-              <th class="px-3 py-2 font-medium whitespace-nowrap overflow-hidden text-ellipsis">Provider</th>
-              <th class="px-3 py-2 font-medium text-right whitespace-nowrap overflow-hidden text-ellipsis">Latency</th>
-              <th class="px-3 py-2 font-medium text-right whitespace-nowrap overflow-hidden text-ellipsis">Tokens In/Out</th>
-              <th class="px-3 py-2 font-medium text-right whitespace-nowrap overflow-hidden text-ellipsis">Cost</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 font-medium">Time</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Status</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Connection/Provider</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Latency</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Tokens In/Out</th>
+              <th class="h-8 whitespace-nowrap px-3 py-2 text-center font-medium">Cost</th>
             </tr>
           </thead>
-          <tbody class="divide-y" style="divide-color: var(--border-subtle);">
-            {#each recentRequests.slice(0, RECENT_VISIBLE_ROWS) as req (req.time)}
-              <tr class="group hover:bg-white/5">
-                <td class="px-3 py-2 text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis" title={req.time}>{req.time}</td>
-                <td class="px-3 py-2">
-                  <span class={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusColor(req.status)} whitespace-nowrap`}>
-                    {req.status === "Reded" ? "Error" : "Success"}
-                  </span>
-                </td>
-                <td class="px-3 py-2 text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis">{req.provider}</td>
-                <td class="px-3 py-2 text-right text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis">{req.latency}</td>
-                <td class="px-3 py-2 text-right text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis">{req.tokens}</td>
-                <td class="px-3 py-2 text-right text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis">{req.cost}</td>
+          <tbody>
+            {#if recentWindow().length > 0}
+              {#each recentRowsForCurrentPage() as req (`${req.time}-${req.provider}-${req.cost}`)}
+                <tr class="h-9 border-t hover:bg-white/5" style="border-color: rgba(100,116,139,0.18);">
+                  <td class="truncate px-3 py-2 text-slate-300" title={req.request_id || ""}>{formatRequestTime(req.time)}</td>
+                  <td class="px-3 py-2 text-center"><span class={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusColor(req.status)}`}>{req.status.includes("Error") ? "Error" : "Success"}</span></td>
+                  <td class="truncate px-3 py-2 text-center text-slate-300" title={requestConnectionProvider(req)}>{requestConnectionProvider(req)}</td>
+                  <td class="px-3 py-2 text-center text-slate-300">{req.latency || "-"}</td>
+                  <td class="px-3 py-2 text-center text-slate-300" title={tokenTotalTooltip(req.tokens)}>{req.tokens || "-"}</td>
+                  <td class="px-3 py-2 text-center text-slate-300">{req.cost || "-"}</td>
+                </tr>
+              {/each}
+            {:else}
+              <tr>
+                <td class="px-3 py-4 text-center text-slate-500" colspan="6">No data.</td>
               </tr>
-            {/each}
+            {/if}
           </tbody>
         </table>
       </div>
-      <div class="mt-2 flex justify-end">
-        <div class="flex items-center gap-1">
-          <button type="button" class="grid h-7 w-7 place-items-center rounded-md border text-slate-300 hover:bg-white/5" style="border-color: var(--border-subtle);" aria-label="Previous page">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </button>
-          <button type="button" class="grid h-7 w-7 place-items-center rounded-md border text-slate-300 hover:bg-white/5" style="border-color: var(--border-subtle);" aria-label="Next page">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </button>
+      <div class="mt-2 flex items-center justify-end text-[11px] text-slate-400">
+        <div class="flex items-center gap-2">
+          <button type="button" class="rounded-md border px-2 py-1 text-[11px] hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-45" style="border-color: var(--border-subtle);" disabled={!canPrevRecentPage()} onclick={prevRecentPage}>Prev</button>
+          <span>Page {recentPage} / {totalRecentPages()}</span>
+          <button type="button" class="rounded-md border px-2 py-1 text-[11px] hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-45" style="border-color: var(--border-subtle);" disabled={!canNextRecentPage()} onclick={nextRecentPage}>Next</button>
         </div>
       </div>
     </div>
 
-    <!-- Top Expensive Requests -->
-    <div 
-      class="col-span-1 flex flex-col rounded-2xl border p-4 shadow-sm"
-      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 240px;"
-    >
+    <div class="col-span-1 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);">
       <h3 class="mb-3 text-sm font-medium text-slate-300">Top Expensive Requests</h3>
-      <div class="flex-1 space-y-0 overflow-hidden">
-        {#each topExpensive as item}
-          <div class="flex items-center justify-between border-b py-2 last:border-0 hover:bg-white/5 px-2 -mx-2 rounded transition-colors" style="border-color: var(--border-subtle);">
-            <div class="truncate text-xs text-slate-400 font-mono w-40">{item.id}</div>
-            <div class="text-xs font-medium text-slate-200">{item.cost}</div>
-          </div>
-        {/each}
+      <div class="flex-1 space-y-0 overflow-hidden" bind:this={topExpensiveViewport}>
+        {#if topExpensive.length > 0}
+          {#each topExpensive.slice(0, topExpensiveVisibleRows) as item (item.id)}
+            <div class="flex items-center justify-between border-b py-2 last:border-0" style="border-color: var(--border-subtle);">
+              <div class="min-w-0 pr-2">
+                <div class="truncate text-xs text-slate-300">{topPrimary(item)}</div>
+                <div class="truncate text-[10px] text-slate-500/90">{topSecondary(item)}</div>
+              </div>
+              <div class="text-xs font-medium text-slate-200 tabular-nums">{item.cost}</div>
+            </div>
+          {/each}
+        {:else}
+          <div class="text-xs text-slate-500">No data.</div>
+        {/if}
       </div>
     </div>
   </div>
 </div>
-
-{#if hoveredSlice}
-  <div
-    class="fixed pointer-events-none z-50 rounded-md border px-3 py-2 text-xs shadow-lg"
-    style="
-      left: {tooltipX}px;
-      top: {tooltipY}px;
-      background-color: var(--surface-1);
-      border-color: var(--border-subtle);
-      color: var(--text-primary);
-    "
-  >
-    <div class="font-medium">{hoveredSlice.name}</div>
-    <div style="color: var(--text-muted);">{hoveredSlice.percent}%</div>
-    <div>{hoveredSlice.cost}</div>
-  </div>
-{/if}
-
-{#if trendHover}
-  <div
-    class="fixed pointer-events-none z-50 rounded-md border px-3 py-2 text-xs shadow-lg"
-    style="
-      left: {trendTipX}px;
-      top: {trendTipY}px;
-      background-color: var(--surface-1);
-      border-color: var(--border-subtle);
-      color: var(--text-primary);
-    "
-  >
-    <div class="font-medium">{trendHover.label}</div>
-    <div style="color: var(--text-muted);">{trendHover.valueFormatted}</div>
-  </div>
-{/if}

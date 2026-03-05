@@ -1,3 +1,4 @@
+import json
 import logging
 import socket
 import threading
@@ -77,10 +78,17 @@ class MCPAgentServer:
         async def _call_tool(name: str, arguments: dict[str, Any]):
             return self._call_tool(name, arguments)
 
+    def _tool_error(self, code: str, message: str) -> str:
+        payload = {"error": {"code": str(code), "message": str(message)}}
+        return json.dumps(payload, ensure_ascii=False)
+
     def _call_tool(self, name: str, arguments: dict[str, Any]) -> List[TextContent]:
         if name == "generate_text":
-            return self._generate_text(arguments["prompt"])
-        raise ValueError(f"Unknown tool: {name}")
+            prompt = str(arguments.get("prompt") or "").strip()
+            if not prompt:
+                raise ValueError(self._tool_error("INVALID_ARGUMENT", "prompt is required"))
+            return self._generate_text(prompt)
+        raise ValueError(self._tool_error("UNKNOWN_TOOL", f"Unknown tool: {name}"))
 
     def _generate_text(self, prompt: str) -> List[TextContent]:
         agent_id = self._agent_id
@@ -92,21 +100,43 @@ class MCPAgentServer:
                 agent_id,
                 prompt_len,
             )
-            raise RuntimeError("V1 execution is not configured for this MCPAgentServer instance")
+            raise RuntimeError(
+                self._tool_error(
+                    "V1_NOT_CONFIGURED",
+                    "V1 execution is not configured for this MCPAgentServer instance",
+                )
+            )
 
         logger.info(
             "routing=v1 agent_id=%s prompt_len=%s",
             agent_id,
             prompt_len,
         )
-        result = self._execute_request_v1(agent_id, prompt)
+        try:
+            result = self._execute_request_v1(agent_id, prompt)
+        except Exception as exc:
+            message = str(exc).strip() or exc.__class__.__name__
+            raise RuntimeError(self._tool_error("EXECUTION_FAILED", message)) from exc
 
         if isinstance(result, dict):
+            status = str(result.get("status") or "").strip().lower()
+            if status == "error":
+                message = str(
+                    result.get("error")
+                    or result.get("error_message")
+                    or result.get("message")
+                    or result.get("error_type")
+                    or "Provider execution failed"
+                ).strip()
+                raise RuntimeError(self._tool_error("PROVIDER_ERROR", message))
             text = str(result.get("text") or result.get("output") or result.get("message") or "")
         else:
             text = str(result)
 
-        return [TextContent(type="text", text=text)]
+        value = str(text or "").strip()
+        if not value:
+            raise RuntimeError(self._tool_error("EMPTY_RESPONSE", "Provider returned empty text content"))
+        return [TextContent(type="text", text=value)]
 
 
     def _create_app(self) -> Starlette:

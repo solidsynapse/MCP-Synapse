@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-
-  import { invoke } from "@tauri-apps/api/core";
+  import { uiCacheGet, uiCacheSet, uiPersistentCacheGet, uiPersistentCacheSet, uiRunDeduped } from "$lib/ui_session";
 
   type Connection = {
     id: string;
@@ -12,67 +11,96 @@
     location: "local" | "lan" | "remote";
     endpoint: string;
     credentialsPath?: string;
+    options?: Record<string, string>;
     updatedAtLabel: string;
     tags: string[];
     configText: string;
   };
 
-  type ProviderId = "openai" | "azure_openai" | "vertex" | "bedrock" | "huggingface" | "ollama";
+  type ProviderId = string;
 
-  // STUB: local mock connections for UI replication only (NO WIRING).
-  const STUB_CONNECTIONS: Connection[] = [
-    {
-      id: "conn_local_runtime_a",
-      name: "Local Runtime A",
-      status: "running",
-      providerId: "ollama",
-      modelId: "model-alpha",
-      location: "local",
-      endpoint: "LOCALHOST_11434",
-      updatedAtLabel: "Today, 09:14:02",
-      tags: ["local", "llm"],
-      configText: JSON.stringify({ connection_name: "Local Runtime A", provider_id: "ollama", model_id: "model-alpha", endpoint: "LOCALHOST_11434" }, null, 2),
-    },
-    {
-      id: "conn_lan_runtime_b",
-      name: "LAN Runtime B",
-      status: "stopped",
-      providerId: "ollama",
-      modelId: "model-beta",
-      location: "lan",
-      endpoint: "LAN_HOST_1234",
-      updatedAtLabel: "Yesterday, 18:42:10",
-      tags: ["lan"],
-      configText: JSON.stringify({ connection_name: "LAN Runtime B", provider_id: "ollama", model_id: "model-beta", endpoint: "LAN_HOST_1234" }, null, 2),
-    },
-    {
-      id: "conn_remote_proxy",
-      name: "Remote Proxy (Staging)",
-      status: "running",
-      providerId: "openai",
-      modelId: "model-gamma",
-      location: "remote",
-      endpoint: "STAGING_ENDPOINT",
-      updatedAtLabel: "Today, 08:03:18",
-      tags: ["remote", "staging"],
-      configText: JSON.stringify({ connection_name: "Remote Proxy (Staging)", provider_id: "openai", model_id: "model-gamma", endpoint: "STAGING_ENDPOINT" }, null, 2),
-    },
-    {
-      id: "conn_local_dev",
-      name: "Local Dev Runtime",
-      status: "stopped",
-      providerId: "ollama",
-      modelId: "mock:model",
-      location: "local",
-      endpoint: "DEV_RUNTIME_5055",
-      updatedAtLabel: "Today, 07:55:41",
-      tags: ["local", "dev"],
-      configText: JSON.stringify({ connection_name: "Local Dev Runtime", provider_id: "ollama", model_id: "mock:model", endpoint: "DEV_RUNTIME_5055" }, null, 2),
-    },
-  ];
+  type ConnectionRecord = {
+    id: string;
+    connection_name: string;
+    status?: string;
+    provider_id: string;
+    model_id: string;
+    endpoint?: string;
+    credentials_path?: string;
+    options?: Record<string, unknown>;
+  };
+
+  type DispatchError = { code?: string; message: string; details?: unknown };
+
+  type SchemaHintField = {
+    id: string;
+    label: string;
+    required: boolean;
+    kind: string;
+    options?: Array<{ value: string; label: string }>;
+    placeholder?: string;
+    help?: string;
+    section?: string;
+  };
+
+  type SchemaHint = {
+    fields: SchemaHintField[];
+    suggested_defaults?: Record<string, string>;
+    defaults?: Record<string, string>;
+    notes?: string[];
+  };
+
+  type DryRunTrace = {
+    request_id: string;
+    connection_id: string;
+    connection_name: string;
+    provider_id: string;
+    model_id: string;
+    preflight_result: {
+      ok: boolean;
+      errors_count: number;
+      warnings_count: number;
+    };
+    canonical_config_hash: string;
+    simulated_steps: string[];
+    dry_run_result: string;
+  };
+
+  type ConnectionsResponse = {
+    ok: boolean;
+    status: string;
+    text?: string | null;
+    error?: DispatchError | null;
+    errors?: string[];
+    warnings?: string[];
+    normalized_payload?: ConnectionRecord;
+    connections?: ConnectionRecord[];
+    config_text?: string | null;
+    dry_run_trace?: DryRunTrace;
+    schema_hint?: SchemaHint;
+    data?: {
+      fields?: SchemaHintField[];
+      defaults?: Record<string, string>;
+      notes?: string[];
+      warnings?: string[];
+      entries?: VaultEntry[];
+      secret?: string;
+      path?: string;
+    } | null;
+  };
+
+  type VaultEntry = {
+    id: string;
+    name: string;
+    type: string;
+    created_at?: string;
+  };
 
   let connections = $state<Connection[]>([]);
   let pageStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
+  const CONNECTIONS_CACHE_KEY = "connections.list";
+  const CONNECTIONS_CACHE_TTL_MS = 60000;
+  const CONNECTIONS_PERSISTENT_CACHE_TTL_MS = 2 * 60 * 1000;
   let busyById = $state<Record<string, boolean>>({});
 
   let query = $state("");
@@ -81,6 +109,7 @@
   type BannerKind = "idle" | "info" | "success" | "danger";
   let bannerKind = $state<BannerKind>("idle");
   let bannerText = $state("");
+  let bannerTimer: ReturnType<typeof setTimeout> | null = null;
 
   let detailsOpen = $state(false);
   let detailsId = $state<string | null>(null);
@@ -89,6 +118,19 @@
   let deleteConfirmId = $state<string | null>(null);
 
   let newWizardOpen = $state(false);
+  let wizardMode = $state<"create" | "edit">("create");
+  let editingConnectionId = $state<string | null>(null);
+  let vaultEntries = $state<VaultEntry[]>([]);
+  let vaultStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
+  let vaultNoticeKind = $state<BannerKind>("idle");
+  let vaultNoticeText = $state("");
+  let vaultPickerOpen = $state(false);
+  let vaultTargetFieldId = $state<string | null>(null);
+  let vaultName = $state("");
+  let vaultSecret = $state("");
+  let vaultBusy = $state(false);
+  let vaultDeleteBusyId = $state<string | null>(null);
+  let helperOpenId = $state<string | null>(null);
   type ProviderOption = { id: ProviderId; label: string };
   const PROVIDERS: ProviderOption[] = [
     { id: "openai", label: "OpenAI" },
@@ -102,15 +144,90 @@
   let newWizardProvider = $state<ProviderId | null>(null);
   let providerQuery = $state("");
   let providerMenuOpen = $state(false);
+  let providerPickerEl = $state<HTMLDivElement | null>(null);
   let newWizardName = $state("");
   let newWizardValues = $state<Record<string, string>>({});
-  let nextStubId = $state(1);
+  let newWizardSchemaHint = $state<SchemaHint | null>(null);
+  let newWizardSchemaStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
+  let newWizardNoticeKind = $state<BannerKind>("idle");
+  let newWizardNoticeText = $state("");
+  function formatErrors(errors: string[] | undefined) {
+    if (!errors || errors.length === 0) return "Unknown error.";
+    return errors.join("; ");
+  }
 
-  const providerOptions = $derived(() => {
-    const q = providerQuery.trim().toLowerCase();
-    if (!q) return PROVIDERS;
-    return PROVIDERS.filter((p) => p.label.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
-  });
+  function formatSchemaHintError(error: DispatchError | null | undefined) {
+    const code = String(error?.code || "schema_hint_failed").trim();
+    const message = String(error?.message || "Schema hint request failed.").trim();
+    return `${code}: ${message}`;
+  }
+
+  function formatWarnings(warnings: string[] | undefined) {
+    if (!warnings || warnings.length === 0) return "";
+    return warnings.join("; ");
+  }
+
+  function formatDryRunTrace(trace: DryRunTrace) {
+    const preflight = trace.preflight_result;
+    const preflightLabel = `${preflight.ok ? "ok" : "fail"}(${preflight.errors_count}e/${preflight.warnings_count}w)`;
+    return `Preflight passed (offline dry-run). Connection: ${trace.connection_name} - Provider: ${trace.provider_id} - Model: ${trace.model_id} - Preflight: ${preflightLabel}`;
+  }
+
+  function normalizeSchemaCandidate(candidate: any): SchemaHint | null {
+    if (!candidate || !Array.isArray(candidate.fields)) return null;
+    return {
+      fields: candidate.fields,
+      suggested_defaults: candidate.suggested_defaults ?? candidate.defaults ?? {},
+      notes: candidate.notes ?? [],
+    };
+  }
+
+  function normalizeSchemaHint(result: ConnectionsResponse): SchemaHint | null {
+    const fromData = normalizeSchemaCandidate(result?.data);
+    if (fromData) return fromData;
+
+    const fromSchemaHint = normalizeSchemaCandidate(result?.schema_hint);
+    if (fromSchemaHint) return fromSchemaHint;
+
+    const fromNestedDataSchemaHint = normalizeSchemaCandidate((result as any)?.data?.schema_hint);
+    if (fromNestedDataSchemaHint) return fromNestedDataSchemaHint;
+
+    const text = typeof result?.text === "string" ? result.text.trim() : "";
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      return (
+        normalizeSchemaCandidate(parsed?.data) ??
+        normalizeSchemaCandidate(parsed?.schema_hint) ??
+        normalizeSchemaCandidate(parsed?.data?.schema_hint) ??
+        normalizeSchemaCandidate(parsed)
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  function toUiConnections(list: ConnectionRecord[]) {
+    return list.map((connection) => ({
+      id: connection.id,
+      name: connection.connection_name,
+      status: connection.status === "running" ? "running" : "stopped",
+      providerId: connection.provider_id,
+      modelId: connection.model_id,
+      location: "remote",
+      endpoint: connection.endpoint ?? "",
+      credentialsPath: connection.credentials_path,
+      options: Object.fromEntries(
+        Object.entries(connection.options ?? {}).map(([k, v]) => [String(k), String(v ?? "")])
+      ),
+      updatedAtLabel: "Persisted",
+      tags: [connection.provider_id],
+      configText: "",
+    })) as Connection[];
+  }
+
+  const providerOptions = $derived(() => PROVIDERS);
+  let providerHighlightIndex = $state<number>(-1);
 
   function providerLabel(id: ProviderId | null) {
     if (!id) return "";
@@ -119,17 +236,368 @@
 
   function openProviderPicker() {
     providerMenuOpen = true;
+    const selectedIndex = providerOptions().findIndex((p) => p.id === newWizardProvider);
+    providerHighlightIndex = selectedIndex >= 0 ? selectedIndex : 0;
   }
 
   function closeProviderPicker() {
     providerMenuOpen = false;
+    providerHighlightIndex = -1;
   }
 
-  function selectProvider(id: ProviderId) {
+  function toggleProviderPicker() {
+    if (providerMenuOpen) {
+      closeProviderPicker();
+      return;
+    }
+    openProviderPicker();
+  }
+
+  function handleProviderPointerDown(event: PointerEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleProviderPicker();
+  }
+
+  function handleProviderFocusOut(event: FocusEvent) {
+    const next = event.relatedTarget as Node | null;
+    if (next && providerPickerEl?.contains(next)) return;
+    closeProviderPicker();
+  }
+
+  async function selectProvider(id: ProviderId) {
     newWizardProvider = id;
     providerQuery = providerLabel(id);
     providerMenuOpen = false;
+    providerHighlightIndex = -1;
+    await loadNewWizardSchemaHint(id);
   }
+
+  function setNewWizardNotice(kind: BannerKind, text: string) {
+    newWizardNoticeKind = kind;
+    newWizardNoticeText = text;
+    setBanner(kind, text);
+  }
+
+  function clearNewWizardNotice() {
+    newWizardNoticeKind = "idle";
+    newWizardNoticeText = "";
+  }
+
+  function setVaultNotice(kind: BannerKind, text: string) {
+    vaultNoticeKind = kind;
+    vaultNoticeText = text;
+  }
+
+  function clearVaultNotice() {
+    vaultNoticeKind = "idle";
+    vaultNoticeText = "";
+  }
+
+  function inferVaultEntryType() {
+    const fieldId = String(vaultTargetFieldId || "").trim().toLowerCase();
+    if (fieldId === "credentials_path" || fieldId.endsWith("_path") || fieldId.includes("credential")) {
+      return "credentials_path";
+    }
+    if (fieldId === "api_key" || fieldId.includes("api_key") || fieldId.includes("token") || fieldId.includes("secret")) {
+      return "api_key";
+    }
+    return "api_key";
+  }
+
+  function helperCopy(fieldId: string) {
+    const id = String(fieldId || "").trim().toLowerCase();
+    if (id === "model_id") {
+      return "Use the exact provider model ID. Placeholder examples show a valid format.";
+    }
+    if (id === "credential_source") {
+      return "File mode uses Credentials path. Manual mode uses AWS keys. API Key mode uses Bedrock bearer token.";
+    }
+    if (id === "endpoint") {
+      return "Leave empty to use core defaults. Set only if your provider requires a custom base URL.";
+    }
+    if (id === "credentials_path") {
+      return "Local credentials file path. Use Browse or Vault to fill this value.";
+    }
+    if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
+      return "Bedrock manual credentials fields. Session token is optional for temporary credentials.";
+    }
+    if (id === "bedrock_api_key") {
+      return "Bedrock API bearer token (ABSK...). Required when Credential source is API Key.";
+    }
+    return "";
+  }
+
+  function toggleHelper(fieldId: string) {
+    const id = String(fieldId || "").trim();
+    helperOpenId = helperOpenId === id ? null : id;
+  }
+
+  function isVaultCredentialsPathType() {
+    return inferVaultEntryType() === "credentials_path";
+  }
+
+  async function triggerVaultCredentialsBrowse() {
+    clearVaultNotice();
+    try {
+      const result = await dispatchInvoke({ op: "vault.pick_credentials_path" });
+      const selected = result.ok ? String(result.data?.path ?? "").trim() : "";
+      if (selected) {
+        vaultSecret = selected;
+        return;
+      }
+      if (!result.ok) {
+        setVaultNotice("danger", result.error?.message || "File picker unavailable.");
+      }
+      return;
+    } catch {
+      // Fallback below keeps compatibility if picker dispatch is unavailable at runtime.
+    }
+
+    const el = document.getElementById("vault-credentials-file") as HTMLInputElement | null;
+    el?.click();
+  }
+
+  function onVaultCredentialsFileSelected(event: Event) {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+    const tauriPath = String((file as any).path ?? "").trim();
+    if (tauriPath) {
+      vaultSecret = tauriPath;
+    } else {
+      setVaultNotice("danger", "Native file path unavailable. Please use the Tauri file picker.");
+    }
+    if (input) input.value = "";
+  }
+
+  function validateCredentialsPathValue(pathValue: string): string | null {
+    const value = String(pathValue || "").trim();
+    if (!value) return null;
+    if (value.toLowerCase().startsWith("vault://")) return null;
+    const unquoted = value.replace(/^['"]+|['"]+$/g, "");
+    const hasSeparator = unquoted.includes("\\") || unquoted.includes("/") || unquoted.includes(":");
+    if (!hasSeparator) {
+      return "Credentials path looks invalid. Use Browse to select a file path.";
+    }
+    return null;
+  }
+
+  async function loadVaultEntries() {
+    vaultStatus = "loading";
+    clearVaultNotice();
+    try {
+      const result = await dispatchInvoke({ op: "vault.list" });
+      const entries = result.ok ? (result.data?.entries ?? []) : [];
+      vaultEntries = Array.isArray(entries) ? entries : [];
+      if (result.ok) {
+        vaultStatus = "ready";
+        return;
+      }
+      vaultStatus = "error";
+      setVaultNotice("danger", result.error?.message || "Vault list failed");
+    } catch (err: any) {
+      vaultStatus = "error";
+      setVaultNotice("danger", err?.message || "Vault list failed");
+    }
+  }
+
+  async function openVaultPicker(fieldId: string) {
+    vaultTargetFieldId = fieldId;
+    vaultPickerOpen = true;
+    await loadVaultEntries();
+  }
+
+  function closeVaultPicker() {
+    vaultPickerOpen = false;
+    vaultTargetFieldId = null;
+    vaultName = "";
+    vaultSecret = "";
+    vaultBusy = false;
+    vaultDeleteBusyId = null;
+    clearVaultNotice();
+  }
+
+  async function createVaultEntry() {
+    if (vaultBusy) return;
+    const name = vaultName.trim();
+    const type = inferVaultEntryType();
+    const secret = vaultSecret;
+    if (!name || !secret) {
+      setVaultNotice("danger", "Name and secret are required.");
+      return;
+    }
+    if (type === "credentials_path") {
+      const validationMessage = validateCredentialsPathValue(secret);
+      if (validationMessage) {
+        setVaultNotice("danger", validationMessage);
+        return;
+      }
+    }
+    if (!type) {
+      setVaultNotice("danger", "Vault type resolution failed.");
+      return;
+    }
+    vaultBusy = true;
+    try {
+      const importMode = type === "credentials_path" ? "credentials_file" : "plain";
+      const result = await dispatchInvoke({ op: "vault.create", entry: { name, type, secret, import_mode: importMode } });
+      if (result.ok) {
+        vaultName = "";
+        vaultSecret = "";
+        await loadVaultEntries();
+        setVaultNotice("success", "Vault entry saved.");
+      } else {
+        setVaultNotice("danger", result.error?.message || "Vault save failed");
+      }
+    } catch (err: any) {
+      setVaultNotice("danger", err?.message || "Vault save failed");
+    } finally {
+      vaultBusy = false;
+    }
+  }
+
+  async function useVaultEntry(entryId: string) {
+    if (vaultBusy || !vaultTargetFieldId) return;
+    if (vaultTargetFieldId === "credentials_path") {
+      updateWizardField(vaultTargetFieldId, `vault://${entryId}`);
+      closeVaultPicker();
+      return;
+    }
+    vaultBusy = true;
+    try {
+      const result = await dispatchInvoke({ op: "vault.read", entry_id: entryId });
+      const secret = result.ok ? result.data?.secret : "";
+      if (result.ok && typeof secret === "string" && secret.trim()) {
+        if (vaultTargetFieldId === "credentials_path") {
+          const validationMessage = validateCredentialsPathValue(secret);
+          if (validationMessage) {
+            setVaultNotice("danger", validationMessage);
+            return;
+          }
+        }
+        updateWizardField(vaultTargetFieldId, secret);
+        closeVaultPicker();
+        return;
+      }
+      setVaultNotice("danger", result.error?.message || "Vault read failed");
+    } catch (err: any) {
+      setVaultNotice("danger", err?.message || "Vault read failed");
+    } finally {
+      vaultBusy = false;
+    }
+  }
+
+  async function deleteVaultEntry(entryId: string) {
+    if (vaultBusy) return;
+    vaultDeleteBusyId = entryId;
+    try {
+      const result = await dispatchInvoke({ op: "vault.delete", entry_id: entryId });
+      if (result.ok) {
+        await loadVaultEntries();
+        setVaultNotice("success", "Vault entry deleted.");
+      } else {
+        setVaultNotice("danger", result.error?.message || "Vault delete failed");
+      }
+    } catch (err: any) {
+      setVaultNotice("danger", err?.message || "Vault delete failed");
+    } finally {
+      vaultDeleteBusyId = null;
+    }
+  }
+
+  async function loadNewWizardSchemaHint(providerId: ProviderId) {
+    newWizardSchemaStatus = "loading";
+    newWizardSchemaHint = null;
+    clearNewWizardNotice();
+    try {
+      const result = await dispatchInvoke({ op: "connections.schema_hint", provider_id: providerId });
+      const normalized = normalizeSchemaHint(result);
+      if (!result.ok && result.error?.code === "desktop_required") {
+        newWizardSchemaStatus = "idle";
+        newWizardSchemaHint = null;
+        setNewWizardNotice("info", "Desktop app required for schema hints. Showing fallback fields.");
+        return;
+      }
+      const hint = normalized;
+      if (result.ok) {
+        if (hint) {
+          newWizardSchemaHint = hint;
+          newWizardSchemaStatus = "ready";
+          const defaults = hint.suggested_defaults ?? {};
+          const next = { ...newWizardValues };
+          for (const [k, v] of Object.entries(defaults)) {
+            const existing = String(next[k] ?? "").trim();
+            if (!existing) next[k] = String(v ?? "");
+          }
+          newWizardValues = next;
+        } else {
+          newWizardSchemaStatus = "idle";
+        }
+        clearNewWizardNotice();
+        return;
+      }
+      newWizardSchemaStatus = "error";
+      setNewWizardNotice("danger", `Schema hint failed: ${formatSchemaHintError(result.error)}`);
+    } catch (err: any) {
+      newWizardSchemaStatus = "error";
+      setNewWizardNotice("danger", `Schema hint failed: ${err?.message || String(err)}`);
+    }
+  }
+
+  const newWizardFields = $derived(() => newWizardSchemaHint?.fields ?? []);
+  const newWizardNameField = $derived(() => newWizardFields().find((f) => f.id === "connection_name") ?? null);
+
+  const newWizardGlobalRequiredFields = $derived(() => {
+    const commonFields = newWizardFields().filter((f) => (f.section || "common") === "common");
+    return commonFields.slice(0, 2);
+  });
+
+  const newWizardProviderFields = $derived(() => {
+    const globalIds = new Set(newWizardGlobalRequiredFields().map((f) => String(f.id || "").trim()));
+    return newWizardFields().filter((f) => !globalIds.has(String(f.id || "").trim()));
+  });
+
+  const fallbackWizardCommonFields: SchemaHintField[] = [
+    {
+      id: "model_id",
+      label: "Model ID",
+      required: true,
+      kind: "text",
+      placeholder: "",
+      help: "Model identifier for the selected provider.",
+      section: "common",
+    },
+  ];
+
+  const fallbackWizardAdvancedFields: SchemaHintField[] = [
+    {
+      id: "endpoint",
+      label: "Endpoint / Base URL",
+      required: false,
+      kind: "text",
+      placeholder: "Optional override",
+      help: "Optional provider endpoint override. Leave blank to use core defaults.",
+      section: "advanced",
+    },
+    {
+      id: "credentials_path",
+      label: "Credentials path",
+      required: false,
+      kind: "text",
+      placeholder: "C:\\path\\to\\credentials.json",
+      help: "Optional path to a local credentials file used by the core runtime.",
+      section: "advanced",
+    },
+  ];
+
+  const effectiveNewWizardCommonFields = $derived(() => {
+    return newWizardFields().length > 0 ? newWizardGlobalRequiredFields() : fallbackWizardCommonFields;
+  });
+
+  const effectiveNewWizardProviderFields = $derived(() => {
+    return newWizardFields().length > 0 ? newWizardProviderFields() : fallbackWizardAdvancedFields;
+  });
 
   const filtered = $derived(() => {
     const q = query.trim().toLowerCase();
@@ -162,49 +630,110 @@
   }
 
   function setBanner(kind: BannerKind, text: string) {
+    if (bannerTimer) {
+      clearTimeout(bannerTimer);
+      bannerTimer = null;
+    }
     bannerKind = kind;
     bannerText = text;
+    if (kind !== "idle" && text) {
+      bannerTimer = setTimeout(() => {
+        bannerKind = "idle";
+        bannerText = "";
+        bannerTimer = null;
+      }, 3200);
+    }
   }
 
-  async function simulateRefresh() {
-    pageStatus = "loading";
+  function dismissBanner() {
+    if (bannerTimer) {
+      clearTimeout(bannerTimer);
+      bannerTimer = null;
+    }
+    bannerKind = "idle";
+    bannerText = "";
+  }
+
+  async function dispatchInvoke(promptPayload: Record<string, unknown>): Promise<ConnectionsResponse> {
+    const tauriGlobal = typeof window !== "undefined"
+      ? (window as any).__TAURI__ ?? (window as any).__TAURI_INTERNALS__
+      : null;
+    if (!tauriGlobal) {
+      return {
+        ok: false,
+        status: "error",
+        error: { code: "desktop_required", message: "Desktop app required" },
+      };
+    }
+    const { invoke } = await import("@tauri-apps/api/core");
+    const prompt = JSON.stringify(promptPayload);
+    return await invoke("dispatch_execute_request_v1", {
+      agentId: "connections",
+      agent_id: "connections",
+      prompt,
+    }) as ConnectionsResponse;
+  }
+
+  async function refreshConnections() {
+    if (pageStatus === "idle" && connections.length === 0) {
+      pageStatus = "loading";
+    }
     setBanner("idle", "");
-    connections = STUB_CONNECTIONS;
-    pageStatus = "ready";
+    try {
+      const result = await uiRunDeduped(CONNECTIONS_CACHE_KEY, async () => await dispatchInvoke({ op: "connections.list" }));
+
+      if (result.ok) {
+        const next = toUiConnections(result.connections ?? []);
+        connections = next;
+        uiCacheSet(CONNECTIONS_CACHE_KEY, next);
+        uiPersistentCacheSet(CONNECTIONS_CACHE_KEY, next);
+        pageStatus = "ready";
+        return;
+      }
+
+      pageStatus = "error";
+      const message = result.error?.message || formatErrors(result.errors);
+      setBanner("danger", `Failed to load connections: ${message}`);
+    } catch (err: any) {
+      pageStatus = "error";
+      setBanner("danger", `Failed to load connections: ${err?.message || String(err)}`);
+    }
   }
 
   async function toggleConnection(connectionId: string) {
     busyById = { ...busyById, [connectionId]: true };
     setBanner("idle", "");
-    let nextStatus: Connection["status"] | null = null;
-    connections = connections.map((c) => {
-      if (c.id !== connectionId) return c;
-      nextStatus = c.status === "running" ? "stopped" : "running";
-      return { ...c, status: nextStatus };
-    });
-    if (nextStatus === "running") setBanner("success", "Started (stub).");
-    if (nextStatus === "stopped") setBanner("danger", "Stopped (stub).");
-    busyById = { ...busyById, [connectionId]: false };
+    try {
+      const current = connections.find((connection) => connection.id === connectionId);
+      const op = current?.status === "running" ? "connections.stop" : "connections.start";
+      const result = await dispatchInvoke({ op, connection_id: connectionId });
+      if (result.ok) {
+        await refreshConnections();
+        setBanner("success", op === "connections.stop" ? "Connection stopped." : "Connection started.");
+      } else {
+        const message = result.error?.message || formatErrors(result.errors);
+        setBanner("danger", `${op === "connections.stop" ? "Stop" : "Start"} failed: ${message}`);
+      }
+    } catch (err: any) {
+      setBanner("danger", `Start/stop failed: ${err?.message || String(err)}`);
+    } finally {
+      busyById = { ...busyById, [connectionId]: false };
+    }
   }
 
   async function testConnection(connectionId: string) {
     busyById = { ...busyById, [connectionId]: true };
     setBanner("idle", "");
     try {
-      const prompt = JSON.stringify({ dry_run: true });
-      const result = await invoke("dispatch_execute_request_v1", {
-        agentId: connectionId,
-        prompt: prompt,
-      }) as { ok: boolean; status: string; text?: string; dry_run_data?: any; error?: { message: string } };
-
-      if (result.ok && result.dry_run_data) {
-        const data = result.dry_run_data;
-        setBanner("success", `Dry-run OK: ${data.provider}/${data.model_id} (ID: ${data.request_id})`);
+      const result = await dispatchInvoke({ op: "connections.dry_run", connection_id: connectionId });
+      if (result.ok && result.dry_run_trace) {
+        setBanner("info", formatDryRunTrace(result.dry_run_trace));
       } else {
-        setBanner("danger", `Dry-run failed: ${result.error?.message || result.status}`);
+        const message = result.error?.message || formatErrors(result.errors);
+        setBanner("danger", `Dry-run failed: ${message}`);
       }
     } catch (err: any) {
-      setBanner("danger", `Dispatch error: ${err.message || String(err)}`);
+      setBanner("danger", `Dry-run failed: ${err?.message || String(err)}`);
     } finally {
       busyById = { ...busyById, [connectionId]: false };
     }
@@ -214,17 +743,12 @@
     busyById = { ...busyById, [connectionId]: true };
     setBanner("idle", "");
 
-    const c = connections.find((x) => x.id === connectionId);
-    const text = c?.configText ?? "";
-    if (!text) {
-      setBanner("danger", "No config available (stub).");
-      busyById = { ...busyById, [connectionId]: false };
-      return;
-    }
+    const text = await fetchConnectionConfig(connectionId, false);
+    if (!text) return;
 
     try {
       await navigator.clipboard.writeText(text);
-      setBanner("success", "Config copied (stub).");
+      setBanner("success", "MCP config copied to clipboard.");
     } catch {
       const el = document.createElement("textarea");
       el.value = text;
@@ -235,7 +759,33 @@
       el.select();
       document.execCommand("copy");
       document.body.removeChild(el);
-      setBanner("success", "Config copied (stub).");
+      setBanner("success", "MCP config copied to clipboard.");
+    } finally {
+      busyById = { ...busyById, [connectionId]: false };
+    }
+  }
+
+  async function copyConnectionDebugConfig(connectionId: string) {
+    busyById = { ...busyById, [connectionId]: true };
+    setBanner("idle", "");
+
+    const text = await fetchConnectionConfig(connectionId, true);
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setBanner("success", "Debug config copied.");
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setBanner("success", "Debug config copied.");
     } finally {
       busyById = { ...busyById, [connectionId]: false };
     }
@@ -246,9 +796,15 @@
     statusFilter = "all";
   }
 
-  function openDetails(connectionId: string) {
+  async function openDetails(connectionId: string) {
     detailsId = connectionId;
     detailsOpen = true;
+    const text = await fetchConnectionConfig(connectionId, false);
+    if (text) {
+      connections = connections.map((connection) =>
+        connection.id === connectionId ? { ...connection, configText: text } : connection
+      );
+    }
   }
 
   function closeDetails() {
@@ -266,90 +822,344 @@
     deleteConfirmId = null;
   }
 
+  async function fetchConnectionConfig(connectionId: string, verbose: boolean) {
+    try {
+      const result = await dispatchInvoke({ op: "connections.copy_config", connection_id: connectionId, verbose });
+      if (result.ok && result.config_text) {
+        return result.config_text;
+      }
+      const message = result.error?.message || formatErrors(result.errors);
+      setBanner("danger", `Copy Config failed: ${message}`);
+    } catch (err: any) {
+      setBanner("danger", `Copy Config failed: ${err?.message || String(err)}`);
+    }
+    return "";
+  }
+
   async function confirmDelete() {
     const id = deleteConfirmId;
     if (!id) return;
     closeDeleteConfirm();
     busyById = { ...busyById, [id]: true };
     setBanner("idle", "");
-    connections = connections.filter((c) => c.id !== id);
-    busyById = { ...busyById, [id]: false };
-    setBanner("danger", "Deleted (stub).");
-    if (detailsId === id) closeDetails();
+    try {
+      const result = await dispatchInvoke({ op: "connections.delete", connection_id: id });
+      if (result.ok) {
+        await refreshConnections();
+        setBanner("success", "Connection deleted.");
+      } else {
+        const message = result.error?.message || formatErrors(result.errors);
+        setBanner("danger", `Delete failed: ${message}`);
+      }
+    } catch (err: any) {
+      setBanner("danger", `Delete failed: ${err?.message || String(err)}`);
+    } finally {
+      busyById = { ...busyById, [id]: false };
+    }
   }
 
   function openNewWizard() {
+    wizardMode = "create";
+    editingConnectionId = null;
     newWizardOpen = true;
+    helperOpenId = null;
     newWizardProvider = null;
     providerQuery = "";
     providerMenuOpen = false;
     newWizardName = "";
     newWizardValues = {};
+    newWizardSchemaHint = null;
+    newWizardSchemaStatus = "idle";
+    clearNewWizardNotice();
   }
 
   function closeNewWizard() {
     newWizardOpen = false;
+    wizardMode = "create";
+    editingConnectionId = null;
+    helperOpenId = null;
   }
 
   function updateWizardField(fieldKey: string, value: string) {
     newWizardValues = { ...newWizardValues, [fieldKey]: value };
   }
 
-  async function submitNewConnection() {
-    const providerId = newWizardProvider;
-    if (!providerId) {
-      setBanner("danger", "Choose a provider (stub).");
-      return;
+  function isCredentialsField(fieldId: string) {
+    return String(fieldId || "").trim() === "credentials_path";
+  }
+
+  function triggerCredentialsBrowse(inputId: string) {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
+    el?.click();
+  }
+
+  function onCredentialsFileSelected(fieldId: string, event: Event) {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+    const tauriPath = String((file as any).path ?? "").trim();
+    if (tauriPath) {
+      updateWizardField(fieldId, tauriPath);
     }
+    if (input) input.value = "";
+  }
 
-    const connectionName = (newWizardName ?? "").trim();
-    const modelId = (newWizardValues.model_id ?? "").trim();
-    const endpoint = (newWizardValues.endpoint ?? "").trim();
-    const credentialsPath = (newWizardValues.credentials_path ?? "").trim();
+  function fieldKind(field: SchemaHintField) {
+    const kind = String(field.kind ?? "").trim().toLowerCase();
+    return kind || "text";
+  }
 
-    if (!connectionName || !modelId) {
-      setBanner("danger", "Provide connection name and model ID (stub).");
-      return;
+  function inputTypeForField(field: SchemaHintField) {
+    return fieldKind(field) === "password" ? "password" : "text";
+  }
+
+  function fieldOptions(field: SchemaHintField) {
+    const options = Array.isArray(field.options) ? field.options : [];
+    return options
+      .map((opt) => ({
+        value: String(opt?.value ?? "").trim(),
+        label: String(opt?.label ?? "").trim(),
+      }))
+      .filter((opt) => opt.value.length > 0);
+  }
+
+  function activeBedrockCredentialSource() {
+    const provider = String(newWizardProvider ?? "").trim().toLowerCase();
+    if (provider !== "bedrock") return "";
+    const raw = String(newWizardValues.credential_source ?? "").trim().toLowerCase();
+    if (raw === "manual") return "manual";
+    if (raw === "api_key") return "api_key";
+    return "file";
+  }
+
+  function isWizardFieldVisible(fieldId: string) {
+    const id = String(fieldId || "").trim().toLowerCase();
+    const source = activeBedrockCredentialSource();
+    if (!source) return true;
+    if (id === "credentials_path") return source === "file";
+    if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
+      return source === "manual";
     }
+    if (id === "bedrock_api_key") return source === "api_key";
+    return true;
+  }
 
-    const id = `conn_stub_${nextStubId}`;
-    nextStubId += 1;
+  function fieldLabel(field: SchemaHintField) {
+    return String(field.label ?? field.id ?? "").trim() || String(field.id ?? "");
+  }
 
-    const config: Record<string, unknown> = { connection_name: connectionName, provider_id: providerId, model_id: modelId };
-    if (endpoint) config.endpoint = endpoint;
-    if (credentialsPath) config.credentials_path = credentialsPath;
+  function inputAutocompleteForField(fieldId: string) {
+    const id = String(fieldId || "").trim().toLowerCase();
+    if (id === "credentials_path" || id === "aws_secret_access_key" || id === "aws_session_token" || id === "bedrock_api_key") {
+      return "new-password";
+    }
+    return "off";
+  }
 
-    const row: Connection = {
-      id,
-      name: connectionName,
-      status: "stopped",
-      providerId: providerId,
-      modelId,
-      location: "remote",
-      endpoint: endpoint || "",
-      credentialsPath: credentialsPath || undefined,
-      updatedAtLabel: "Just now",
-      tags: [providerId, "stub"],
-      configText: JSON.stringify(config, null, 2),
+  function modelPlaceholderForProvider(providerId: ProviderId | null): string {
+    const id = String(providerId || "").trim().toLowerCase();
+    if (id === "vertex") return "Example: gemini-2.0-flash-001";
+    if (id === "azure_openai") return "Example: gpt-4o-mini";
+    if (id === "openai") return "Example: gpt-4o-mini";
+    if (id === "bedrock") return "Example: anthropic.claude-3-5-sonnet";
+    if (id === "huggingface") return "Example: meta-llama/Llama-3.1-8B-Instruct";
+    if (id === "ollama") return "Example: llama3.1";
+    return "Example: gpt-4o-mini";
+  }
+
+  function fieldPlaceholder(field: SchemaHintField) {
+    const id = String(field.id || "").trim();
+    if (id === "model_id") return modelPlaceholderForProvider(newWizardProvider);
+    return String(field.placeholder || "");
+  }
+
+  const SSOT_GATE_TEXT = "Not wired in this phase (SSOT gate).";
+  const COPY_CONFIG_TEXT = "Copy MCP config (canonical).";
+  const TEST_OFFLINE_ONLY_TEXT = "Offline only (deterministic dry-run).";
+
+  function buildNewWizardConnectionPayload() {
+    const providerId = String(newWizardProvider ?? "").trim();
+    const connectionName = String(newWizardName ?? "").trim();
+    const payload: Record<string, string> = {
+      connection_name: connectionName,
+      provider_id: providerId,
     };
 
-    busyById = { ...busyById, [id]: true };
+    const fields = newWizardFields();
+    if (fields.length > 0) {
+      for (const f of fields) {
+        const id = String(f.id || "").trim();
+        if (!id || id === "connection_name" || id === "provider_id") continue;
+        if (!isWizardFieldVisible(id)) continue;
+        const value = String(newWizardValues[id] ?? "").trim();
+        if (!value) continue;
+        payload[id] = value;
+      }
+      if (providerId === "bedrock") {
+        const sourceRaw = String(newWizardValues.credential_source ?? payload.credential_source ?? "file").trim().toLowerCase();
+        payload.credential_source = sourceRaw === "manual" ? "manual" : sourceRaw === "api_key" ? "api_key" : "file";
+        if (payload.credential_source === "manual") {
+          delete payload.credentials_path;
+          delete payload.bedrock_api_key;
+        } else if (payload.credential_source === "api_key") {
+          delete payload.credentials_path;
+          delete payload.aws_access_key_id;
+          delete payload.aws_secret_access_key;
+          delete payload.aws_session_token;
+        } else {
+          delete payload.aws_access_key_id;
+          delete payload.aws_secret_access_key;
+          delete payload.aws_session_token;
+          delete payload.bedrock_api_key;
+        }
+      }
+      return payload;
+    }
+
+    const modelId = String(newWizardValues.model_id ?? "").trim();
+    if (modelId) payload.model_id = modelId;
+    const endpoint = String(newWizardValues.endpoint ?? "").trim();
+    if (endpoint) payload.endpoint = endpoint;
+    const credentialsPath = String(newWizardValues.credentials_path ?? "").trim();
+    if (credentialsPath) payload.credentials_path = credentialsPath;
+    return payload;
+  }
+
+  async function preflightConnection() {
+    busyById = { ...busyById, preflight: true };
     setBanner("idle", "");
-    connections = [row, ...connections];
-    busyById = { ...busyById, [id]: false };
-    closeNewWizard();
-    setBanner("success", "Created connection (stub).");
+    try {
+      const connection = buildNewWizardConnectionPayload();
+      const credentialsPath = String(connection.credentials_path ?? "").trim();
+      const validationMessage = validateCredentialsPathValue(credentialsPath);
+      if (validationMessage) {
+        setNewWizardNotice("danger", validationMessage);
+        return;
+      }
+      const result = await dispatchInvoke({
+        op: "connections.preflight",
+        connection,
+      });
+
+      if (result.ok) {
+        const warningText = formatWarnings(result.warnings);
+        if (warningText) {
+          setNewWizardNotice("info", `Preflight warnings: ${warningText}`);
+        } else {
+          setNewWizardNotice("success", "Preflight OK.");
+        }
+        return;
+      }
+
+      const message = result.error?.message || formatErrors(result.errors);
+      setNewWizardNotice("danger", `Preflight failed: ${message}`);
+    } catch (err: any) {
+      setNewWizardNotice("danger", `Preflight failed: ${err?.message || String(err)}`);
+    } finally {
+      busyById = { ...busyById, preflight: false };
+    }
+  }
+
+  async function submitNewConnection() {
+    busyById = { ...busyById, new: true };
+    setBanner("idle", "");
+    try {
+      const connection = buildNewWizardConnectionPayload();
+      const credentialsPath = String(connection.credentials_path ?? "").trim();
+      const validationMessage = validateCredentialsPathValue(credentialsPath);
+      if (validationMessage) {
+        setNewWizardNotice("danger", validationMessage);
+        return;
+      }
+      const op = wizardMode === "edit" ? "connections.update" : "connections.create";
+      const payload: Record<string, unknown> = { op, connection };
+      if (wizardMode === "edit" && editingConnectionId) {
+        payload.connection_id = editingConnectionId;
+      }
+      const result = await dispatchInvoke(payload);
+
+      if (result.ok) {
+        connections = toUiConnections(result.connections ?? []);
+        pageStatus = "ready";
+        closeNewWizard();
+        const warningText = formatWarnings(result.warnings);
+        if (warningText) {
+          setBanner("info", `${wizardMode === "edit" ? "Updated" : "Created"} with warnings: ${warningText}`);
+        } else {
+          setBanner("success", wizardMode === "edit" ? "Connection updated." : "Created connection.");
+        }
+        return;
+      }
+
+      const message = result.error?.message || formatErrors(result.errors);
+      setNewWizardNotice("danger", `${wizardMode === "edit" ? "Update" : "Create"} failed: ${message}`);
+    } catch (err: any) {
+      setNewWizardNotice("danger", `${wizardMode === "edit" ? "Update" : "Create"} failed: ${err?.message || String(err)}`);
+    } finally {
+      busyById = { ...busyById, new: false };
+    }
+  }
+
+  async function openEditWizard(connectionId: string) {
+    const target = connections.find((connection) => connection.id === connectionId);
+    if (!target) {
+      setBanner("danger", "Edit failed: connection not found.");
+      return;
+    }
+
+    wizardMode = "edit";
+    editingConnectionId = connectionId;
+    newWizardOpen = true;
+    helperOpenId = null;
+    newWizardProvider = target.providerId;
+    providerQuery = providerLabel(target.providerId);
+    providerMenuOpen = false;
+    newWizardName = target.name;
+    newWizardValues = {
+      model_id: target.modelId,
+      endpoint: target.endpoint || "",
+      credentials_path: target.credentialsPath || "",
+      ...(target.options ?? {}),
+    };
+    clearNewWizardNotice();
+    await loadNewWizardSchemaHint(target.providerId);
   }
 
   onMount(() => {
-    simulateRefresh();
+    const persistent = uiPersistentCacheGet<Connection[]>(CONNECTIONS_CACHE_KEY, CONNECTIONS_PERSISTENT_CACHE_TTL_MS);
+    if (persistent) {
+      connections = persistent;
+      pageStatus = "ready";
+    }
+    const cached = uiCacheGet<Connection[]>(CONNECTIONS_CACHE_KEY, CONNECTIONS_CACHE_TTL_MS);
+    if (cached) {
+      connections = cached;
+      pageStatus = "ready";
+      window.setTimeout(() => {
+        void refreshConnections();
+      }, 90);
+      return;
+    }
+    if (persistent) {
+      window.setTimeout(() => {
+        void refreshConnections();
+      }, 90);
+      return;
+    }
+    void refreshConnections();
+    return () => {
+      if (bannerTimer) {
+        clearTimeout(bannerTimer);
+        bannerTimer = null;
+      }
+    };
   });
 </script>
 
 <div class="space-y-4 p-6">
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0">
-      <div class="ui-subtitle mt-1">Manage runtimes and configs (UI only; stubbed data).</div>
+      <div class="ui-subtitle mt-1">Create and manage MCP connections.</div>
     </div>
     <div class="flex shrink-0 items-center gap-2">
       <button
@@ -377,7 +1187,17 @@
           <div class="truncate text-xs" style="color: var(--text-muted);"> </div>
         {/if}
       </div>
-      <div class="shrink-0 text-[10px]" style="color: var(--text-muted);">UI-only</div>
+      {#if bannerText}
+        <button
+          type="button"
+          class="shrink-0 rounded border px-1.5 py-0.5 text-[10px] hover:bg-white/10"
+          style="border-color: var(--border-subtle);"
+          aria-label="Dismiss notification"
+          onclick={dismissBanner}
+        >
+          x
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -385,18 +1205,18 @@
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div class="ui-card ui-pad-md">
         <div class="ui-subtitle">Total</div>
-        <div class="mt-2 text-xl font-semibold tracking-tight">{stats().total}</div>
+        <div class="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-right">{stats().total}</div>
       </div>
       <div class="ui-card ui-card--glow ui-pad-md">
         <div class="ui-subtitle">Running</div>
-        <div class="mt-2 text-xl font-semibold tracking-tight">{stats().running}</div>
+        <div class="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-right">{stats().running}</div>
       </div>
       <div
         class="ui-card ui-pad-md"
         style="background-image: radial-gradient(120% 120% at 30% 0%, rgba(244, 63, 94, 0.12) 0%, transparent 55%);"
       >
-        <div class="ui-subtitle">Stopped</div>
-        <div class="mt-2 text-xl font-semibold tracking-tight">{stats().stopped}</div>
+        <div class="ui-subtitle" style="color: rgb(254, 202, 202);">Stopped</div>
+        <div class="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-right" style="color: rgb(254, 202, 202);">{stats().stopped}</div>
       </div>
     </div>
 
@@ -412,7 +1232,7 @@
             id="connections-query"
             class="ui-focus h-9 w-[240px] min-w-[180px] flex-1 rounded-md border px-3 text-xs"
             style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
-            placeholder="Search…"
+            placeholder="Search..."
             bind:value={query}
           />
           <label class="sr-only" for="connections-status">Status</label>
@@ -442,7 +1262,7 @@
   <div class="ui-card ui-pad-md">
     <div class="flex items-center justify-between gap-3">
       <div class="ui-title">Connection list</div>
-      <div class="ui-subtitle">Click a row to view details (modal).</div>
+      <div class="ui-subtitle">Use row actions or open details from the row affordance.</div>
     </div>
 
     <div class="mt-3 overflow-hidden rounded-lg border" style="border-color: var(--border-subtle);">
@@ -501,23 +1321,30 @@
           {:else if pageStatus === "ready"}
             {#each filtered() as c (c.id)}
               <tr
-                class="ui-row-hover cursor-pointer"
+                class="group ui-row-hover cursor-pointer"
                 onclick={() => openDetails(c.id)}
               >
                 <td class="px-3 py-3">
                   <div class="flex min-w-0 items-center gap-2">
                     <div class="min-w-0">
                       <div class="truncate font-medium" style="color: var(--text-primary);">{c.name}</div>
-                      <div class="truncate ui-subtitle mt-0.5">{c.modelId} • {c.location}</div>
+                      <div class="truncate ui-subtitle mt-0.5">{c.modelId} - {c.location}</div>
                     </div>
+                    <span class="ml-auto hidden shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-slate-300/85 transition-opacity group-hover:inline-flex" style="border-color: var(--border-subtle);">
+                      <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                      <span>View details</span>
+                    </span>
                   </div>
                 </td>
                 <td class="px-3 py-3">
                   <span class={`ui-pill ${badgeClassForStatus(c.status)}`}>{c.status === "running" ? "Running" : "Stopped"}</span>
                 </td>
                 <td class="px-3 py-3">
-                  <div class="truncate" style="color: var(--text-primary);">{c.endpoint || "—"}</div>
-                  <div class="ui-subtitle mt-0.5">Updated: {c.updatedAtLabel}</div>
+                  <div class="truncate" style="color: var(--text-primary);">{c.endpoint || "Not set"}</div>
+                  <div class="ui-subtitle mt-0.5">{c.updatedAtLabel}</div>
                 </td>
                 <td class="px-3 py-3">
                   <div class="flex items-center justify-end gap-1.5">
@@ -528,6 +1355,7 @@
                           ? "border-rose-900/50 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15"
                           : "border-emerald-900/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/15"
                       }`}
+                      title={c.status === "running" ? "Stop connection" : "Start connection"}
                       disabled={busyById[c.id] === true}
                       onclick={(e) => {
                         e.stopPropagation();
@@ -539,6 +1367,7 @@
                     <button
                       type="button"
                       class="ui-focus h-7 rounded-md border border-slate-700/60 bg-white/5 px-2 text-[11px] font-medium text-slate-200 transition-colors hover:bg-white/10"
+                      title={TEST_OFFLINE_ONLY_TEXT}
                       disabled={busyById[c.id] === true}
                       onclick={(e) => {
                         e.stopPropagation();
@@ -550,6 +1379,7 @@
                     <button
                       type="button"
                       class="ui-focus h-7 rounded-md border border-slate-700/60 bg-white/5 px-2 text-[11px] font-medium text-slate-200 transition-colors hover:bg-white/10"
+                      title={COPY_CONFIG_TEXT}
                       disabled={busyById[c.id] === true}
                       onclick={(e) => {
                         e.stopPropagation();
@@ -560,7 +1390,20 @@
                     </button>
                     <button
                       type="button"
+                      class="ui-focus h-7 rounded-md border border-slate-700/60 bg-white/5 px-2 text-[11px] font-medium text-slate-200 transition-colors hover:bg-white/10"
+                      title="Edit connection"
+                      disabled={busyById[c.id] === true}
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        void openEditWizard(c.id);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
                       class="ui-focus h-7 rounded-md border border-rose-900/60 bg-rose-500/10 px-2 text-[11px] font-medium text-rose-200 transition-colors hover:bg-rose-500/15"
+                      title="Delete connection"
                       disabled={busyById[c.id] === true}
                       onclick={(e) => {
                         e.stopPropagation();
@@ -575,7 +1418,7 @@
             {/each}
           {:else if pageStatus === "error"}
             <tr>
-              <td class="px-3 py-6 ui-subtitle" colspan="4">Failed to load (stubbed).</td>
+              <td class="px-3 py-6 ui-subtitle" colspan="4">Failed to load.</td>
             </tr>
           {/if}
         </tbody>
@@ -601,7 +1444,7 @@
             <div class="ui-title">Details</div>
             {#if selected}
               <div class="mt-1 truncate text-sm font-medium" style="color: var(--text-primary);">{selected.name}</div>
-              <div class="ui-subtitle mt-1">{selected.modelId} • {selected.location}</div>
+              <div class="ui-subtitle mt-1">{selected.modelId} - {selected.location}</div>
             {:else}
               <div class="ui-subtitle mt-1">Not found.</div>
             {/if}
@@ -620,7 +1463,7 @@
           <div class="mt-4 grid grid-cols-2 gap-3">
             <div class="ui-card ui-pad-md" style="background-color: var(--surface-2);">
               <div class="ui-subtitle">Endpoint</div>
-              <div class="mt-1 truncate text-xs" style="color: var(--text-primary);">{selected.endpoint || "—"}</div>
+              <div class="mt-1 truncate text-xs" style="color: var(--text-primary);">{selected.endpoint || "Not set"}</div>
             </div>
             <div class="ui-card ui-pad-md" style="background-color: var(--surface-2);">
               <div class="ui-subtitle">Tags</div>
@@ -632,15 +1475,26 @@
             </div>
           </div>
           <div class="mt-3 ui-card ui-pad-md" style="background-color: var(--surface-2);">
-            <div class="ui-subtitle">Config (stub)</div>
+            <div class="ui-subtitle">Config</div>
             <pre
               class="mt-2 overflow-auto rounded-md border p-3 text-[11px] leading-4"
               style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary); max-height: 260px;"
             >{selected.configText}</pre>
+            <div class="mt-3 flex justify-end">
+              <button
+                type="button"
+                class="ui-focus h-9 rounded-md border px-3 text-xs font-semibold transition-colors hover:bg-white/5"
+                style="border-color: var(--border-subtle); background-color: transparent; color: var(--text-primary);"
+                disabled={busyById[selected.id] === true}
+                onclick={() => copyConnectionDebugConfig(selected.id)}
+              >
+                Copy MCP Config (Debug)
+              </button>
+            </div>
           </div>
         {/if}
-      </div>
     </div>
+  </div>
   </div>
 {/if}
 
@@ -658,7 +1512,7 @@
       <div class="ui-card ui-pad-lg" style="background-color: var(--surface-1);">
         <div class="ui-title">Delete connection</div>
         <div class="ui-subtitle mt-2">
-          This is UI-only. The connection will be removed from the local list for this session.
+          This will permanently delete the selected connection.
         </div>
         <div class="mt-3 rounded-md border border-rose-900/40 bg-rose-500/10 p-3 text-xs text-rose-200">
           {#if toDelete}
@@ -681,11 +1535,11 @@
             class="ui-focus h-9 rounded-md border border-rose-900/60 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 transition-colors hover:bg-rose-500/15"
             onclick={confirmDelete}
           >
-            Delete (stub)
+            Delete
           </button>
-        </div>
-      </div>
     </div>
+  </div>
+  </div>
   </div>
 {/if}
 
@@ -699,12 +1553,11 @@
       aria-label="Close new connection wizard"
       onclick={closeNewWizard}
     ></button>
-    <div class="absolute left-1/2 top-1/2 w-[780px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2">
-      <div class="ui-card ui-pad-lg" style="background-color: var(--surface-1);">
+    <div class="absolute left-1/2 top-1/2 w-[780px] max-w-[calc(100vw-40px)] max-h-[calc(100vh-40px)] -translate-x-1/2 -translate-y-1/2">
+      <div class="ui-card ui-pad-lg flex max-h-[calc(100vh-40px)] flex-col" style="background-color: var(--surface-1);">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="ui-title">New Connection</div>
-            <div class="ui-subtitle mt-1">Wizard is stubbed; submit updates local list only.</div>
+            <div class="ui-title">{wizardMode === "edit" ? "Edit Connection" : "New Connection"}</div>
           </div>
           <button
             type="button"
@@ -716,128 +1569,474 @@
           </button>
         </div>
 
-        <div class="mt-4">
-          <div class="ui-card ui-pad-md" style="background-color: var(--surface-2);">
-            <label class="ui-subtitle" for="provider-combobox">Provider</label>
-            <div class="relative mt-2">
-              <input
-                id="provider-combobox"
-                class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
-                style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
-                placeholder="Search and select..."
-                value={providerQuery}
-                onfocus={() => openProviderPicker()}
-                onblur={() => setTimeout(() => closeProviderPicker(), 0)}
-                oninput={(e) => {
-                  providerQuery = (e.currentTarget as HTMLInputElement).value;
-                  newWizardProvider = null;
-                  openProviderPicker();
-                }}
-                onkeydown={(e) => {
-                  if (e.key === "Escape") closeProviderPicker();
-                }}
-                aria-expanded={providerMenuOpen}
-                aria-controls="provider-menu"
-              />
+        <div class={`mt-4 rounded-md border p-3 text-xs ${bannerClass(newWizardNoticeKind)}`}>
+          {#if newWizardNoticeText}
+            <div class="font-medium">{newWizardNoticeText}</div>
+          {:else if newWizardSchemaHint?.notes?.length}
+            <div style="color: var(--text-muted);">{newWizardSchemaHint.notes.join(" ")}</div>
+          {:else}
+            <div style="color: var(--text-muted);"> </div>
+          {/if}
+        </div>
 
-              {#if providerMenuOpen}
-                <div
-                  id="provider-menu"
-                  class="absolute left-0 right-0 z-10 mt-2 overflow-hidden rounded-md border"
-                  style="border-color: var(--border-subtle); background-color: var(--surface-2); box-shadow: var(--shadow-2);"
-                >
-                  {#if providerOptions().length === 0}
-                    <div class="px-3 py-2 text-xs" style="color: var(--text-muted);">No matches</div>
-                  {:else}
-                    {#each providerOptions() as p (p.id)}
+        <div class="mt-4 flex-1 overflow-y-auto pr-1">
+          <div>
+            <div class="ui-card ui-pad-md" style="background-color: var(--surface-2);">
+              <label class="ui-subtitle" for="provider-combobox">Provider</label>
+              <div class="relative mt-2" bind:this={providerPickerEl} onfocusout={handleProviderFocusOut}>
+                <input
+                  id="provider-combobox"
+                  class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                  style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                  placeholder="Select provider..."
+                  value={providerQuery}
+                  readonly
+                  autocomplete="off"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck={false}
+                  onfocus={() => openProviderPicker()}
+                  onpointerdown={handleProviderPointerDown}
+                  onkeydown={(e) => {
+                    const options = providerOptions();
+                    const max = options.length - 1;
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      closeProviderPicker();
+                      return;
+                    }
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (!providerMenuOpen) {
+                        openProviderPicker();
+                        return;
+                      }
+                      providerHighlightIndex = Math.min(max, providerHighlightIndex + 1);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      if (!providerMenuOpen) {
+                        openProviderPicker();
+                        return;
+                      }
+                      providerHighlightIndex = Math.max(0, providerHighlightIndex - 1);
+                      return;
+                    }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (!providerMenuOpen) return;
+                      if (providerHighlightIndex < 0 || providerHighlightIndex > max) return;
+                      selectProvider(options[providerHighlightIndex].id);
+                      return;
+                    }
+                    if (e.key === "Backspace" || e.key === "Delete" || e.key.length === 1) {
+                      e.preventDefault();
+                    }
+                  }}
+                  aria-expanded={providerMenuOpen}
+                  aria-controls="provider-menu"
+                />
+
+                {#if providerMenuOpen}
+                  <div
+                    id="provider-menu"
+                    class="absolute left-0 right-0 z-10 mt-2 overflow-hidden rounded-md border"
+                    style="border-color: var(--border-subtle); background-color: var(--surface-2); box-shadow: var(--shadow-2);"
+                  >
+                    {#each providerOptions() as p, idx (p.id)}
                       <button
                         type="button"
-                        class="ui-focus block w-full px-3 py-2 text-left text-xs transition-colors hover:bg-white/5"
+                        class={`ui-focus block w-full px-3 py-2 text-left text-xs transition-colors ${
+                          idx === providerHighlightIndex ? "bg-white/10" : "hover:bg-white/5"
+                        }`}
                         style="color: var(--text-primary); background-color: transparent;"
-                        onclick={() => selectProvider(p.id)}
+                        onpointerdown={(e) => {
+                          e.preventDefault();
+                          selectProvider(p.id);
+                        }}
                       >
                         <div class="font-medium">{p.label}</div>
-                        <div class="mt-0.5 text-[10px]" style="color: var(--text-muted);">{p.id}</div>
                       </button>
                     {/each}
-                  {/if}
-                </div>
-              {/if}
+                  </div>
+                {/if}
+              </div>
             </div>
           </div>
 
           <div class="mt-3 ui-card ui-pad-md min-h-[260px]" style="background-color: var(--surface-2);">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="ui-subtitle" for="new-name">Connection name</label>
-                <input
-                  id="new-name"
-                  class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-                  style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
-                  placeholder="Example: Synapse Agent"
-                  bind:value={newWizardName}
-                />
-              </div>
-              <div>
-                <label class="ui-subtitle" for="new-model">Model ID</label>
-                <input
-                  id="new-model"
-                  class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-                  style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
-                  placeholder="Example: gpt-4o-mini"
-                  value={newWizardValues.model_id || ""}
-                  oninput={(e) => updateWizardField("model_id", (e.currentTarget as HTMLInputElement).value)}
-                />
-              </div>
+            <div>
+              <label class="ui-subtitle" for="new-name">
+                {newWizardNameField()?.label ?? "Connection name"}{newWizardNameField()?.required ? " *" : ""}
+              </label>
+              <input
+                id="new-name"
+                class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                placeholder={newWizardNameField()?.placeholder ?? "Example: Synapse Agent"}
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                bind:value={newWizardName}
+              />
+              {#if newWizardNameField()?.help}
+                <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{newWizardNameField()?.help}</div>
+              {/if}
             </div>
 
-            <div class="mt-3 grid grid-cols-2 gap-3">
-              <div>
-                <label class="ui-subtitle" for="new-endpoint">Endpoint / Base URL (optional)</label>
-                <input
-                  id="new-endpoint"
-                  class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-                  style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
-                  placeholder="api.example.invalid"
-                  value={newWizardValues.endpoint || ""}
-                  oninput={(e) => updateWizardField("endpoint", (e.currentTarget as HTMLInputElement).value)}
-                />
-              </div>
-              <div>
-                <label class="ui-subtitle" for="new-creds">Credentials path (optional)</label>
-                <input
-                  id="new-creds"
-                  class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-                  style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
-                  placeholder="C:\\path\\to\\credentials.json"
-                  value={newWizardValues.credentials_path || ""}
-                  oninput={(e) => updateWizardField("credentials_path", (e.currentTarget as HTMLInputElement).value)}
-                />
-              </div>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              {#each effectiveNewWizardCommonFields() as field (field.id)}
+                {#if field.id !== "connection_name" && isWizardFieldVisible(field.id)}
+                  <div>
+                    <div class="flex items-center justify-between gap-2">
+                      <label class="ui-subtitle" for={`new-${field.id}`}>
+                        {fieldLabel(field)}{field.required ? " *" : ""}
+                      </label>
+                      {#if helperCopy(field.id)}
+                        <button
+                          type="button"
+                          class="ui-focus rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                          style="border-color: var(--border-subtle); color: var(--text-muted);"
+                          aria-expanded={helperOpenId === field.id}
+                          onclick={() => toggleHelper(field.id)}
+                        >
+                          ?
+                        </button>
+                      {/if}
+                    </div>
+                    {#if helperOpenId === field.id}
+                      <div class="mt-1 rounded-md border px-2 py-1 text-[11px]" style="border-color: var(--border-subtle); color: var(--text-muted);">
+                        {helperCopy(field.id)}
+                      </div>
+                    {/if}
+                    {#if fieldKind(field) === "multiline"}
+                      <textarea
+                        id={`new-${field.id}`}
+                        class="ui-focus mt-2 w-full rounded-md border p-3 text-[11px] leading-4"
+                        style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary); height: 96px; resize: none;"
+                        value={newWizardValues[field.id] || ""}
+                        oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLTextAreaElement).value)}
+                      ></textarea>
+                    {:else if fieldKind(field) === "select"}
+                      <select
+                        id={`new-${field.id}`}
+                        class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                        style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                        value={newWizardValues[field.id] || ""}
+                        onchange={(e) => updateWizardField(field.id, (e.currentTarget as HTMLSelectElement).value)}
+                      >
+                        {#each fieldOptions(field) as option (option.value)}
+                          <option value={option.value}>{option.label}</option>
+                        {/each}
+                      </select>
+                    {:else}
+                      {#if isCredentialsField(field.id)}
+                        <div class="mt-2 flex items-center gap-2">
+                          <input
+                            id={`new-${field.id}`}
+                            class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                            style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                            placeholder={fieldPlaceholder(field)}
+                            autocomplete={inputAutocompleteForField(field.id)}
+                            autocapitalize="off"
+                            spellcheck="false"
+                            value={newWizardValues[field.id] || ""}
+                            oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLInputElement).value)}
+                          />
+                          <button
+                            type="button"
+                            class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                            onclick={() => triggerCredentialsBrowse(`new-${field.id}-file`)}
+                          >
+                            Browse
+                          </button>
+                          <button
+                            type="button"
+                            class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                            onclick={() => openVaultPicker(field.id)}
+                          >
+                            Vault
+                          </button>
+                          <input
+                            id={`new-${field.id}-file`}
+                            type="file"
+                            class="hidden"
+                            onchange={(e) => onCredentialsFileSelected(field.id, e)}
+                          />
+                        </div>
+                      {:else}
+                        <input
+                          id={`new-${field.id}`}
+                          type={inputTypeForField(field)}
+                          class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                          style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                          placeholder={fieldPlaceholder(field)}
+                          autocomplete={inputAutocompleteForField(field.id)}
+                          autocapitalize="off"
+                          spellcheck="false"
+                          value={newWizardValues[field.id] || ""}
+                          oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLInputElement).value)}
+                        />
+                      {/if}
+                    {/if}
+                    {#if field.help}
+                      <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{field.help}</div>
+                    {/if}
+                  </div>
+                {/if}
+              {/each}
             </div>
 
             <div class="mt-3">
               <div class="ui-subtitle">Selected provider</div>
-              <div class="mt-1 truncate text-xs font-medium" style="color: var(--text-primary);">{providerId ? providerLabel(providerId) : "—"}</div>
-              <div class="mt-0.5 truncate text-[10px]" style="color: var(--text-muted);">{providerId || ""}</div>
+              <div class="mt-1 truncate text-xs font-medium" style="color: var(--text-primary);">{providerId ? providerLabel(providerId) : "-"}</div>
             </div>
 
-            <details class="mt-3 rounded-md border border-slate-700/60 bg-white/5 p-3">
-              <summary class="cursor-pointer text-xs font-medium" style="color: var(--text-primary);">Advanced (optional)</summary>
+            <div class="mt-3 rounded-md border border-slate-700/60 bg-white/5 p-3">
+              <div class="text-xs font-medium" style="color: var(--text-primary);">Provider fields</div>
               <div class="mt-3">
-                <div class="ui-subtitle">Provider-specific options (stub)</div>
-                <textarea
-                  class="ui-focus mt-2 w-full rounded-md border p-3 text-[11px] leading-4"
-                  style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary); height: 96px; resize: none;"
-                  placeholder="Stub JSON (not saved yet)"
-                  value={newWizardValues.advanced_stub || ""}
-                  oninput={(e) => updateWizardField("advanced_stub", (e.currentTarget as HTMLTextAreaElement).value)}
-                ></textarea>
+                {#if effectiveNewWizardProviderFields().length === 0}
+                  <div class="text-xs" style="color: var(--text-muted);">No provider fields.</div>
+                {:else}
+                  <div class="grid gap-3 sm:grid-cols-2">
+                    {#each effectiveNewWizardProviderFields() as field (field.id)}
+                      {#if isWizardFieldVisible(field.id)}
+                      <div>
+                        <div class="flex items-center justify-between gap-2">
+                          <label class="ui-subtitle" for={`new-${field.id}`}>
+                            {fieldLabel(field)}{field.required ? " *" : ""}
+                          </label>
+                          {#if helperCopy(field.id)}
+                            <button
+                              type="button"
+                              class="ui-focus rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                              style="border-color: var(--border-subtle); color: var(--text-muted);"
+                              aria-expanded={helperOpenId === field.id}
+                              onclick={() => toggleHelper(field.id)}
+                            >
+                              ?
+                            </button>
+                          {/if}
+                        </div>
+                        {#if helperOpenId === field.id}
+                          <div class="mt-1 rounded-md border px-2 py-1 text-[11px]" style="border-color: var(--border-subtle); color: var(--text-muted);">
+                            {helperCopy(field.id)}
+                          </div>
+                        {/if}
+                    {#if fieldKind(field) === "multiline"}
+                      <textarea
+                            id={`new-${field.id}`}
+                            class="ui-focus mt-2 w-full rounded-md border p-3 text-[11px] leading-4"
+                            style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary); height: 96px; resize: none;"
+                            value={newWizardValues[field.id] || ""}
+                            oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLTextAreaElement).value)}
+                          ></textarea>
+                        {:else if fieldKind(field) === "select"}
+                          <select
+                            id={`new-${field.id}`}
+                            class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                            style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                            value={newWizardValues[field.id] || ""}
+                            onchange={(e) => updateWizardField(field.id, (e.currentTarget as HTMLSelectElement).value)}
+                          >
+                            {#each fieldOptions(field) as option (option.value)}
+                              <option value={option.value}>{option.label}</option>
+                            {/each}
+                          </select>
+                        {:else}
+                          {#if isCredentialsField(field.id)}
+                            <div class="mt-2 flex items-center gap-2">
+                              <input
+                                id={`new-${field.id}`}
+                                class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                                style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                                placeholder={fieldPlaceholder(field)}
+                                autocomplete={inputAutocompleteForField(field.id)}
+                                autocapitalize="off"
+                                spellcheck="false"
+                                value={newWizardValues[field.id] || ""}
+                                oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLInputElement).value)}
+                              />
+                              <button
+                                type="button"
+                                class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                                style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                                onclick={() => triggerCredentialsBrowse(`new-${field.id}-file`)}
+                              >
+                                Browse
+                              </button>
+                              <button
+                                type="button"
+                                class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                                style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                                onclick={() => openVaultPicker(field.id)}
+                              >
+                                Vault
+                              </button>
+                              <input
+                                id={`new-${field.id}-file`}
+                                type="file"
+                                class="hidden"
+                                onchange={(e) => onCredentialsFileSelected(field.id, e)}
+                              />
+                            </div>
+                          {:else}
+                            <input
+                              id={`new-${field.id}`}
+                              type={inputTypeForField(field)}
+                              class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
+                              style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                              placeholder={fieldPlaceholder(field)}
+                              autocomplete={inputAutocompleteForField(field.id)}
+                              autocapitalize="off"
+                              spellcheck="false"
+                              value={newWizardValues[field.id] || ""}
+                              oninput={(e) => updateWizardField(field.id, (e.currentTarget as HTMLInputElement).value)}
+                            />
+                          {/if}
+                        {/if}
+                        {#if field.help}
+                          <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{field.help}</div>
+                        {/if}
+                      </div>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
               </div>
-            </details>
+            </div>
           </div>
+        </div>
 
-          <div class="mt-4 flex justify-end gap-2">
+        {#if vaultPickerOpen}
+          <div class="fixed inset-0 z-50">
+            <button
+              type="button"
+              class="absolute inset-0 h-full w-full"
+              style="background-color: rgba(0, 0, 0, 0.55);"
+              aria-label="Close vault picker"
+              onclick={closeVaultPicker}
+            ></button>
+            <div class="absolute left-1/2 top-1/2 w-[640px] max-w-[calc(100vw-40px)] -translate-x-1/2 -translate-y-1/2">
+              <div class="ui-card ui-pad-md" style="background-color: var(--surface-1);">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="ui-title text-base">Vault</div>
+                  <button
+                    type="button"
+                    class="ui-focus rounded-md border px-3 py-2 text-xs font-medium transition-colors hover:bg-white/5"
+                    style="border-color: var(--border-subtle); color: var(--text-primary); background-color: transparent;"
+                    onclick={closeVaultPicker}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div class={`mt-3 rounded-md border p-2 text-xs ${bannerClass(vaultNoticeKind)}`}>
+                  {#if vaultNoticeText}
+                    <div class="font-medium">{vaultNoticeText}</div>
+                  {:else}
+                    <div style="color: var(--text-muted);"> </div>
+                  {/if}
+                </div>
+
+                <div class="mt-3 grid gap-2">
+                  <input
+                    class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                    style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                    placeholder="Vault entry name"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    bind:value={vaultName}
+                  />
+                  <div class="flex items-center gap-2">
+                    <input
+                      class="ui-focus h-9 w-full rounded-md border px-3 text-xs"
+                      style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                      placeholder={isVaultCredentialsPathType() ? "Credentials path" : "Secret"}
+                      autocomplete="new-password"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      type={isVaultCredentialsPathType() ? "text" : "password"}
+                      bind:value={vaultSecret}
+                    />
+                    {#if isVaultCredentialsPathType()}
+                      <button
+                        type="button"
+                        class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                        style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                        onclick={triggerVaultCredentialsBrowse}
+                      >
+                        Browse
+                      </button>
+                      <input
+                        id="vault-credentials-file"
+                        type="file"
+                        class="hidden"
+                        onchange={(e) => onVaultCredentialsFileSelected(e)}
+                      />
+                    {/if}
+                  </div>
+                  <div class="flex justify-end">
+                    <button
+                      type="button"
+                      class="ui-focus h-9 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
+                      style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                      disabled={vaultBusy}
+                      onclick={createVaultEntry}
+                    >
+                      Save to Vault
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mt-3">
+                  {#if vaultStatus === "loading"}
+                    <div class="text-xs text-slate-500">Loading vault entries...</div>
+                  {:else if vaultEntries.length === 0}
+                    <div class="text-xs text-slate-500">No vault entries.</div>
+                  {:else}
+                    <div class="space-y-2">
+                      {#each vaultEntries as entry (entry.id)}
+                        <div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2" style="border-color: var(--border-subtle);">
+                          <div class="min-w-0">
+                            <div class="truncate text-xs font-medium" style="color: var(--text-primary);">{entry.name}</div>
+                            <div class="truncate text-[10px] text-slate-500/90">{entry.type}</div>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <button
+                              type="button"
+                              class="ui-focus h-8 rounded-md border px-2 text-[11px] font-medium transition-colors hover:bg-white/5"
+                              style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                              disabled={vaultBusy}
+                              onclick={() => useVaultEntry(entry.id)}
+                            >
+                              Use
+                            </button>
+                            <button
+                              type="button"
+                              class="ui-focus h-8 rounded-md border px-2 text-[11px] font-medium transition-colors hover:bg-white/5"
+                              style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+                              disabled={vaultDeleteBusyId === entry.id}
+                              onclick={() => deleteVaultEntry(entry.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <div class="mt-4 flex justify-end gap-2">
             <button
               type="button"
               class="ui-focus h-9 rounded-md border border-slate-700/60 bg-white/5 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
@@ -847,18 +2046,23 @@
             </button>
             <button
               type="button"
+              class="ui-focus h-9 rounded-md border border-slate-700/60 bg-white/5 px-3 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10"
+              disabled={busyById.preflight === true}
+              onclick={preflightConnection}
+            >
+              Preflight
+            </button>
+            <button
+              type="button"
               class="ui-focus h-9 rounded-md border px-4 text-xs font-semibold transition-colors"
-              style={providerId && newWizardName.trim() && (newWizardValues.model_id || "").trim()
-                ? "border-color: rgba(39, 201, 169, 0.55); background-color: rgba(39, 201, 169, 0.10); color: var(--text-primary);"
-                : "border-color: var(--border-subtle); background-color: rgba(255,255,255,0.04); color: var(--text-muted);"}
-              disabled={!(providerId && newWizardName.trim() && (newWizardValues.model_id || "").trim())}
+              style="border-color: rgba(39, 201, 169, 0.55); background-color: rgba(39, 201, 169, 0.10); color: var(--text-primary);"
+              disabled={busyById.new === true}
               onclick={submitNewConnection}
             >
-              Create (stub)
+              {wizardMode === "edit" ? "Save Changes" : "Create Connection"}
             </button>
           </div>
         </div>
       </div>
     </div>
-  </div>
 {/if}

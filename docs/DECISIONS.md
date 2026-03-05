@@ -676,3 +676,82 @@ P4 UI PREP is ALLOWED when:
 - Usage and constraints are documented in docs/UI_STYLE_GUIDE.md.
 - New UI pages MUST reuse these primitives and tokens.
 - No alternative styling system is allowed.
+
+## D-030 — P5 Remaining Pages Wiring Order Lock
+
+- Date: 2026-02-27
+- Decision: After Connections completion (P5.8/P5.9/P5.10), remaining page wiring must proceed in strict page-scoped packages and fixed order.
+- Scope: Usage, Policies, Resilience, Settings, Dashboard (non-Connections surfaces).
+
+### Normative rules
+- Execution order is fixed:
+  1) Usage/Summary
+  2) Usage/History
+  3) Policies/Persona Lite
+  4) Policies/Optimizations
+  5) Resilience/Budget Guards
+  6) Resilience/Interceptors
+  7) Dashboard
+  8) Settings
+- One package = one page (or one leaf route group) only; no cross-page feature expansion.
+- Functional wiring precedes UI polish. Layout/visual refactors are forbidden unless required for functional success/error rendering.
+- Thin-shell and single-entrypoint rules from D-024 and D-029 remain mandatory for every package.
+- Existing Connections behavior is locked; no opportunistic refactor during non-Connections wiring packages.
+
+### Evidence gate
+- Each package must produce docs\evidence\<id_timestamp>\ with: commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt.
+- If UI is touched: ui_static_check.txt is mandatory.
+- Provider/network callsite guard (UI production path) must remain zero and be evidenced via grep_proofs.txt.
+
+## D-031 — Budget Enforcement Toggle Deferred; Monitor-Only Lock Continues
+
+- Date: 2026-03-01
+- Decision:
+  - Budget Guard MUST remain monitor-only for current phase packages.
+  - Optional enforcement toggle (block/throttle at threshold) is explicitly deferred.
+  - Enforcement toggle is allowed only after a dedicated future package + SSOT FLIP decision + deterministic evidence.
+- Constraints:
+  - Current runtime behavior MUST NOT block, throttle, or alter request execution from budget thresholds.
+  - Dashboard/alerts may render budget warning/critical status only (render-only semantics).
+- Next-gate order (normative):
+  1) Interceptors runtime effect proof
+  2) Optimizations runtime effect proof (context caching + request dedup)
+  3) Usage/Connections residual wiring behavior fixes
+  4) Settings functional validation
+  5) Tooltip/helper evaluation (post-functional gate)
+  6) Final copy/meta fixes + UI polish + app icon
+
+## D-032 — V1.0 Gate Closure Then V1.1 Provider Freeze + LLM Cost Gate
+
+- Date: 2026-03-04
+- Decision:
+  - V1.0 MUST close remaining release gates on current surfaces first; no scope expansion before closure.
+  - Immediately after V1.0 closure, V1.1 MUST run a Provider Freeze Gate with exactly these target providers:
+    1) Vertex AI
+    2) Azure OpenAI
+    3) Bedrock
+    4) OpenAI
+  - LLM Lite integration MUST be evaluated and accepted only through a dedicated LLM Cost Gate after provider freeze.
+- Constraints:
+  - During Provider Freeze + LLM Cost Gate, provider scope MUST NOT expand beyond the four listed targets.
+  - Cost output MUST be deterministic and consistent across backend response, UI display, and CSV export for the same rows.
+  - If pricing metadata is missing/unsupported, state MUST be explicit (no silent fake-zero success claim).
+- Normative order:
+  1) V1.0 release gate closure
+  2) V1.1 provider freeze gate (4-provider lock)
+  3) V1.1 LLM cost gate (consistency + trust)
+
+## D-033 — BYOK + Local-Only Boundary and Forbidden Use Lock
+
+- Date: 2026-03-04
+- Decision:
+  - Product operation model is BYOK + local-only orchestration.
+  - Product MUST NOT be positioned or operated as a shared key pool, managed key broker, or proxy-as-a-service.
+- Constraints (normative):
+  - Provider credentials belong to the deploying user/organization account; credential sharing/pooling across unrelated third parties is forbidden.
+  - UI/docs must clearly state that provider calls execute under user-configured provider terms, quotas, and legal obligations.
+  - Product support boundaries must remain explicit: app behavior is supported, provider account governance remains user responsibility.
+- Forbidden uses (release policy):
+  1) Offering paid/free shared access to one provider key across external tenants via this app.
+  2) Reselling the app endpoint as a generic hosted proxy service for third parties.
+  3) Misrepresenting the app as a compliance substitute for provider-side contractual/regulatory duties.

@@ -1,0 +1,165 @@
+﻿MCP SYNAPSE - TAKVIMSEL STRATEJI DOKUMANI
+Durum: Feature list locked, UI-BE/DB wiring asamasi
+Kapsam: Tek dosyalik uygulama stratejisi (beta -> 60 gun faz -> V1 gecis modeli)
+
+0) Stratejik Cerceve
+- Yeni ozellik ekleme durduruldu (feature freeze).
+- Oncelik: mevcut kapsami saglam sekilde beta kullaniciya sunmak.
+- Beta sonrasi 60 gun boyunca odak:
+  A) Moduler hedef mimariye gecis icin refaktor planlama ve uygulama
+  B) Geri bildirim toplama, kategorize etme, onceliklendirme, bug fix
+  C) Roadmap ve gelecek feature setlerini hedef mimariye uyumlu hale getirme
+
+1) Ana Hedefler (60 Gun Faz)
+H1: Migration hazirligi ve cekirdek modularizasyon ilerlemesi
+H2: Stabilite + performans artisi (kullanici deneyimi iyilesmesi)
+H3: En cok beklenen ilk feature setlerinden sinirli bir dilimin teslimi
+H4: Faz sonunda V1'e giden net, olculebilir yol haritasi
+
+2) Faz Yapisi (Gun 1-60)
+
+Faz-1 (Gun 1-10) - Beta Cikis ve Olcum Altyapisi
+- Beta paketini yayinla (mevcut kapsam, yeni feature yok)
+- Kritik telemetriyi sabitle: crash, hata tipi, latency, usage trend
+- Geri bildirim kanallarini ac: in-app form / issue template / support queue
+- Triage siniflari tanimla: Bug, UX, Performance, Missing capability, Docs
+
+Beklenen cikti:
+- Isleyen feedback hatti
+- Ilk 10 gun hata ve kullanim baseline raporu
+
+Faz-2 (Gun 11-25) - Triage Motoru ve Mimari Planlama
+- Geri bildirimleri etki x efor matrisine gore puanla
+- P0/P1 bug listesi sabitle
+- Modularizasyon icin hedef sinirlar netlestir:
+  - Core
+  - Module (policy/transform/decision)
+  - Adapter (provider/domain)
+- Refaktor sirasini sprintlenebilir backlog'a donustur
+
+Beklenen cikti:
+- Onceliklendirilmis bug/refaktor backlog
+- Core/Module/Adapter boundary dokumani (calisma versiyonu)
+
+Faz-3 (Gun 26-45) - Kontrollu Uygulama
+- Kritik bug fixleri (P0/P1) kapat
+- Refaktorun ilk dalgasi:
+  - Hook/lifecycle zemini
+  - Policy state ile runtime baglantisinin netlestirilmesi
+  - Provider-specific dallanmalarin azaltilmasi
+- Performans iyilestirme dalgasi-1:
+  - Sicak path optimizasyonu
+  - Gereksiz islem/IO azaltimi
+
+Beklenen cikti:
+- Regresyon yaratmadan migration ilerlemesi
+- Olculebilir performans kazanimi
+
+Faz-4 (Gun 46-60) - Stabilizasyon ve Faz Kapanis
+- Regression sweep + rollback provasi
+- En cok beklenen ilk feature setinden sinirli teslimatlar
+- Yol haritasi revizyonu (mimari uyumlu v1 plani)
+- Faz kapanis raporu: ne tasindi, ne iyilesti, ne kaldi
+
+Beklenen cikti:
+- Migration ilerleme eşiği gecilmis
+- Daha stabil/perf odakli deneyim
+- V1'e gecis icin net sonraki adimlar
+
+3) Is Akislari ve Kapasite Dagilimi (60 Gun icinde)
+- %40: Bug fix + feedback triage + stabilizasyon
+- %35: Refaktor/migration uygulamasi
+- %25: Performans + sinirli yuksek talepli feature teslimi
+
+Not:
+- Feature freeze bozulmaz. Sadece "en cok beklenen ilk bir kac set" icin kontrollu, oncelikli teslimat yapilir.
+- Kapsam degisiklikleri Change Control kapisindan gecer.
+
+4) Faz Kapilari (Gate Model)
+
+Kapi-1 (Gun 10)
+- Feedback intake calisiyor
+- Baseline metrikler olusmus
+- Kritik incident yonetimi aktif
+
+Kapi-2 (Gun 25)
+- P0/P1 backlog net
+- Refaktor sira plani net
+- Boundary tanimlari ekipce kabul edilmis
+
+Kapi-3 (Gun 45)
+- Refaktor ilk dalga hedefleri tamamlanmis
+- Kritik bug trendi dusus egiliminde
+- Performans iyilesmesi olculebilir
+
+Kapi-4 (Gun 60) - Faz cikis
+- Migration hedefi "calisir ve surdurulebilir" seviyeye gelmis
+- Stabilite/perf iyilesmesi kanitli
+- Ilk beklenen feature setlerinin planlanan dilimi teslim edilmis
+- V1 yolu (kalan backlog + tarihler) sabitlenmis
+
+5) KPI ve Basari Olcutleri
+
+Kalite/Stabilite KPI
+- Crash-free oraninda artış
+- P0/P1 bug kapanis orani hedefe ulasma
+- Kritik hata tekrar oraninda dusus
+
+Performans KPI
+- p95 yanit suresinde iyilesme
+- Zaman asimi / hata oraninda dusus
+
+Urun KPI (beta)
+- Active connections trendi
+- Ortalama gunluk request trendi
+- Beta retention ve aktif kullanici devamlılığı
+
+Migration KPI
+- Planlanan mimari is kalemlerinin tamamlanma orani
+- Core/Module/Adapter ayriminin kod seviyesinde netlesme orani
+
+6) Geri Bildirim Yonetim Sistemi
+- Kategori: Bug / UX / Perf / Feature request / Docs
+- Oncelik skoru: Impact x Frequency x Strategic fit x Effort
+- Haftalik triage toplantisi: zorunlu
+- 2 haftada bir roadmap revizyonu: zorunlu
+
+Triage karar kurallari:
+- P0: hemen hotfix
+- P1: mevcut sprint
+- P2: sonraki sprint
+- P3: roadmap havuzu
+
+7) Riskler ve Onlemler
+R1: Kapsam kaymasi
+- Onlem: Feature freeze + change control + gate bazli onay
+
+R2: Refaktorun teslimati geciktirmesi
+- Onlem: Kademeli migration + regressions-first + rollback provasi
+
+R3: Geri bildirimlerin daginik kalmasi
+- Onlem: Tek intake kanali + standart etiketleme + haftalik triage
+
+R4: Performans kazaniminin olculememesi
+- Onlem: Baseline metrik zorunlulugu + faz sonu KPI raporu
+
+8) Faz Sonrasi Model (Gun 61+)
+Faz tamamlandiktan sonra is gucu dagilimi:
+- %60 kapasite: urunun performans artirimi + roadmap'te kalan hedeflerin tamamlanmasi + V1 gecisinin kapanisi
+- %40 kapasite: domain cesitlendirmesi, pazar arastirmasi, urun teorik planlamasi, genisleme hazirligi
+
+Bu modelin amaci:
+- Urunun cekirdek degerini buyuturken yeni pazar opsiyonlarini paralelde acmak
+- V1 teslimat disiplinini kaybetmeden stratejik genisleme yapmak
+
+9) Yonetici Ozeti (Tek Sayfa Kisa Karar)
+- Dogru yol: once kapsami kilitle, beta yayinla, 60 gunluk kontrollu toparlama/refaktor fazini islet.
+- Faz sonunda hedef: migration ilerlemis, deneyim stabil/perf odakli iyilesmis, kritik ilk talepler teslim edilmis olsun.
+- Sonraki asama: 60/40 modelle hem V1 kapanisi hem domain genisleme hazirligi ayni anda surdurulsun.
+
+10) Operasyonel Komut
+Bu dokumanin temel prensibi:
+Teslimat disiplinini bozmadan platformlasma.
+
+Basari kosulu:
+"Daha iyi mimari" ile "zamaninda urun" hedeflerini birbirine feda etmeden, gate bazli yurutmek.

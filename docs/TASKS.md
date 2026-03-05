@@ -1080,8 +1080,367 @@ Packages (each is independently committable + verifiable):
 
 - P5.6 Copy Config canonicalization (core)
   - UI “Copy Config” obtains canonical JSON from core (removes UI hardcode).
-  - Evidence: deterministic output + UI contains no provider logic.
+  - Evidence: docs\evidence\P5_6_COPY_CONFIG_VERIFY_20260226-024338 (core deterministic canonical output) + docs\evidence\P5_6_COPY_UI_ENABLE_20260227-070630 (row Copy enabled; Start/Stop/Delete gates unchanged; ui check PASS).
 
 - P5.7 Test (dry-run)
   - Bind existing dry_run dispatch to persisted config; still zero provider/network calls.
   - Evidence: deterministic dry_run result returned through single-entrypoint.
+
+- P5.8 Connections lifecycle wiring (core)
+  - Enable Connections Start/Stop/Delete through the single core/headless dispatch boundary.
+  - UI remains thin-shell: collect + dispatch + render only; no provider/network/protocol logic in UI.
+  - Core must expose deterministic ops: connections.start, connections.stop, connections.delete with explicit error payloads.
+  - No hidden retry/backoff/fallback; no streaming; no new runtime dependencies.
+  - Evidence (PASS, package slices): docs\evidence\P5_8A_DELETE_WIRING_20260227-073626 (connections.delete core+dispatcher+UI confirm flow) + docs\evidence\P5_8B_START_STOP_WIRING_20260227-074309
+(connections.start/stop wiring + UI start/stop enable + ui check PASS + grep guard PASS) + docs\evidence\P5_8C_DELETE_ROW_UNGATE_20260227-075607 (UI row Delete ungated; delete dispatch unchanged; busy-safe +
+explicit banner preserved; ui check PASS).
+
+- P5.9 Connections runtime orchestration (core)
+  - Start/Stop must control real connection runtime lifecycle (not status-only).
+  - Start must provision/activate runtime for a persisted connection and expose reachable SSE endpoint.
+  - Stop must terminate/deactivate runtime and release endpoint.
+  - Keep thin-shell rule: UI only dispatches + renders; no provider/network/protocol logic in UI.
+  - No hidden retry/backoff/fallback; deterministic error payloads required.
+  - Evidence (PASS): docs\evidence\P5_9_TASK_PACKAGE_ADD_20260227-091534 (task package add) + docs\evidence\P5_9A_RETRY_CORE_ONLY_V2_20260227-092552 (core-only runtime start/stop with SSE reachable-after-start and unreachable-after-stop; UI unchanged) + docs\evidence\INCIDENT_START_TEST_SPLIT_FIX_V1_20260227-100837 (dry_run project_id payload fix) + docs\evidence\P5_9A_DRYRUN_PROJECTID_REGRESSION_TEST_20260227-101255 (regression test PASS) + docs\evidence\P5_9_REAL_SURFACE_SMOKE_V1_20260227-101926 (real-surface smoke PASS) + docs\evidence\FULL_OWNERSHIP_STOP_WIN87_FIX_20260227-120009 (Windows stop WinError 87 fix) + docs\evidence\ENCODING_CHARMAP_FIX_20260227-123051 (runtime charmap encoding fix) + docs\evidence\DRYRUN_BANNER_COMPACT_V1_20260227-123854 (dry-run banner compact) + docs\evidence\P5_9_RUNTIME_ENCODING_CLOSURE_AUDIT_20260227-124419 (closure audit PASS).
+
+- Acceptance criteria:
+  - For a started connection, `connections.list` returns runtime-reflective status and endpoint metadata.
+  - SSE probe to reported endpoint succeeds after Start and fails after Stop (evidence-based).
+  - `connections.start/stop` return explicit success/error codes/messages for: missing id, not found, start failed, stop failed.
+  - Existing P5.8 behavior remains intact for Delete/Copy/Test UX and guards.
+
+- Evidence required:
+  - docs\evidence\P5_9_<timestamp>\
+  - commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt
+  - runtime_probe.txt (start->SSE reachable, stop->SSE unreachable)
+  - list_before_after.json, start_stop_outputs.json
+  - ui_static_check.txt (if UI touched in later execution package)
+
+- Acceptance criteria:
+  - Row actions Start/Stop/Delete dispatch through single-entrypoint path and return explicit success/error.
+  - Start/Stop/Delete UI actions are busy-safe (no double-dispatch) and render explicit error messages.
+  - Existing P5.6 Copy and P5.7 Test behavior remains unchanged.
+  - UI provider/network callsite guard remains 0 hits on production path.
+
+- Evidence required:
+  - docs\evidence\P5_8_<timestamp>\
+  - commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt
+  - grep_proofs.txt (UI provider/network references = 0)
+  - ui_static_check.txt (npm run check)
+  - test/smoke outputs (if run) + exit codes
+
+- P5.10 IDE tool response contract hardening (core)
+  - Ensure successful MCP tool calls return deterministic content payload (not health-only text).
+  - Ensure failure payloads expose explicit error code/message and remain UTF-8 safe on Windows runtime paths.
+  - Preserve thin-shell + single-entrypoint: UI dispatch/render only; no provider/network/protocol logic in UI.
+  - No hidden retry/backoff/fallback; deterministic failures only.
+  - Evidence (PASS): docs\evidence\P5_10_TASK_PACKAGE_ADD_20260227-195403 (task package add) + docs\evidence\P5_10A_MCP_CONTENT_ERROR_CONTRACT_20260227-195727 (MCP success/error contract hardening + regression tests + raw shape proofs) + docs\evidence\P5_10A_CLOSURE_AUDIT_20260227-203253 (closure audit PASS).
+
+- Acceptance criteria:
+  - A successful tool call returns non-empty MCP `content` with at least one `type: "text"` item.
+  - Raw response evidence shows MCP `content/text` shape for at least one Vertex-backed connection.
+  - Failure-path evidence shows explicit `error.code` + `error.message` (no generic unknown/charmap crash).
+  - Existing P5.8/P5.9 Start/Stop/Delete/Copy/Test behavior remains unchanged.
+
+- Evidence required:
+  - docs\evidence\P5_10_<timestamp>\
+  - commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt
+  - tool_call_success_raw.json, tool_call_error_raw.json
+  - mcp_content_shape_proof.txt
+  - ui_static_check.txt (only if UI is touched in later execution slices)
+
+- P5.11 Remaining pages wiring rollout (page-scoped, no-polish-first)
+  - Goal: Complete functional wiring for non-Connections pages in deterministic, page-by-page packages.
+  - Connections page is baseline-complete; do not refactor/re-scope Connections while executing P5.11 packages.
+  - UI polish/layout changes are out of scope unless strictly required to render functional success/error state.
+  - Preserve thin-shell + single-entrypoint constraints from D-024/D-029 for all packages.
+
+- Execution order (normative):
+  - P5.11A Usage / Summary wiring
+  - P5.11B Usage / History wiring
+  - P5.11C Policies / Persona Lite wiring
+  - P5.11D Policies / Optimizations wiring
+  - P5.11E Resilience / Budget Guards wiring
+  - P5.11F Resilience / Interceptors wiring
+  - P5.11G Dashboard read-model wiring
+  - P5.11H Settings wiring
+
+- Evidence (PASS slices):
+  - P5.11A Usage / Summary wiring: docs\evidence\P5_11A_USAGE_SUMMARY_WIRING_20260227-205310
+  - P5.11B Usage / History wiring: docs\evidence\P5_11B_USAGE_HISTORY_WIRING_20260227-210405
+  - P5.11C Policies / Persona Lite wiring: docs\evidence\P5_11C_POLICIES_PERSONA_WIRING_20260227-211026
+  - P5.11D Policies / Optimizations wiring: docs\evidence\P5_11D_POLICIES_OPTIMIZATIONS_WIRING_20260227-211824
+  - P5.11E Resilience / Budget Guards wiring: docs\evidence\P5_11E_RESILIENCE_BUDGET_WIRING_20260227-213627
+  - P5.11F Resilience / Interceptors wiring: docs\evidence\P5_11F_RESILIENCE_INTERCEPTORS_WIRING_20260227-214919
+  - P5.11G Dashboard wiring: docs\evidence\P5_11G_DASHBOARD_WIRING_20260227-220945
+  - P5.11H Settings wiring: docs\evidence\P5_11H_SETTINGS_WIRING_20260227-223113
+  - P5.11 Closure PASS (full-surface regression): docs\evidence\P5_11_FULL_SURFACE_REGRESSION_20260227-224528
+  - P5.11 PRS live validation matrix PASS (Policies/Resilience/Settings get/set + persistence + validation contract): docs\evidence\P5_11_PRS_LIVE_VALIDATION_MATRIX_V1_RETRY_20260228-085227
+  - P5.11 PRS persona runtime binding + live confirm PASS (runtime persona prompt injection verified with signature marker [PERSO_TEST_OK]; IDE tool restart required for fresh runtime pickup): docs\evidence\P5_11PRS_PERSONA_RUNTIME_BINDING_20260301-001548
+  - P5.11 PRS manual live sweep NARROW (functional persistence PASS; unresolved UX/data-parity findings queued as F-PRS-01..08): docs\evidence\P5_11_PRS_MANUAL_SWEEP_EVIDENCE_INDEX_20260228-092749
+
+- Package scope rule (all P5.11x packages):
+  - One page (or one route group leaf) per package; no cross-page feature expansion.
+  - Keep unrelated files unchanged; if drift is detected, classify as KEEP/DISCARD/DEFER before edits.
+  - Placeholder/stub labels must be updated in the same package once that page becomes wired.
+
+- Acceptance criteria (each P5.11x package):
+  - Page actions dispatch via approved core/headless boundary and render explicit success/error messages.
+  - No provider/network/protocol logic in UI production path.
+  - Deterministic offline behavior for validation paths where applicable (no hidden retry/backoff/fallback).
+  - Existing P5.8/P5.9/P5.10 behavior remains unchanged.
+
+- Evidence required (each P5.11x package):
+  - docs\evidence\P5_11x_<timestamp>\
+  - commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt
+  - page_smoke.txt (+ exit code) and ui_static_check.txt (if UI touched)
+  - grep_proofs.txt (UI provider/network callsites guard)
+
+- P5.12 Post-P5.11 stability + contract audit hardening
+  - Objective: After P5.11 closure PASS, harden cross-page state/contract stability with deterministic audit-first slices.
+  - Objective: Keep thin-shell and single-entrypoint boundaries unchanged while reducing regression risk in wired pages.
+
+- Scope IN:
+  - Cross-page contract consistency checks for wired P5.11 routes (dispatcher/core response envelopes and validation errors).
+  - Deterministic regression/audit packages and evidence index updates following P5.11 closure baseline.
+  - Baseline reference: docs\evidence\P5_11_FULL_SURFACE_REGRESSION_20260227-224528.
+
+- Scope OUT:
+  - New provider/network/protocol logic in UI.
+  - Non-deterministic runtime coupling, hidden retry/backoff/fallback additions.
+  - Unscoped refactors outside explicitly approved package slices.
+
+- Acceptance:
+  - Wired P5.11 pages retain explicit success/error contract behavior under repeated regression runs.
+  - Validation error paths remain explicit (`error.code` + `error.message`) and deterministic.
+  - No scope drift outside per-package allowlist and no regression to P5.11 closure baseline.
+
+- Evidence required:
+  - docs\evidence\P5_12_<timestamp>\
+  - commands_ran.txt, changed_files.txt, rollback.txt, anchor_proofs.txt, ssot_core.sha256.before.txt, ssot_core.sha256.after.txt
+  - regression_matrix.md, dispatcher_contract_matrix.json, ui_static_check.txt
+
+- Evidence (PASS slices):
+  - P5.12B Active Bridges running semantic + stop/start parity PASS: docs\evidence\ACTIVE_BRIDGES_STOP_PARITY_V2_20260228-052546
+  - P5.12B scope lock PASS: docs\evidence\DASHBOARD_POLISH_P6_SCOPE_LOCK_20260228-063115
+  - P5.12B refresh + Usage/History Clear parity probe PASS (no-edit): docs\evidence\DASHBOARD_REFRESH_AND_HISTORY_CLEAR_PARITY_PROBE_20260228-063153
+  - P5.12C dashboard parity apply PASS (fresh reconfirmation complete): docs\evidence\DASHBOARD_POLISH_P7_APPLY_20260228-063404; docs\evidence\P5_12C_REVALIDATE_SUPERVISOR_20260301-224444
+  - P5.12C recent requests cap PASS (fresh reconfirmation complete): docs\evidence\DASHBOARD_POLISH_P8_RECENT12_20260228-065147; docs\evidence\P5_12C_REVALIDATE_SUPERVISOR_20260301-224444
+  - P5.12C refresh feedback PASS (current behavior re-anchored and live reconfirmed): docs\evidence\DASHBOARD_POLISH_P8B_REFRESH_FEEDBACK_20260228-065232; docs\evidence\P5_12C_A1_REFRESH_FEEDBACK_REVALIDATE_20260301-235523; docs\evidence\P5_12C_1315_LIVE_20260302-030853
+  - P5.12C final clear parity check PASS (fresh parity reconfirmation complete): docs\evidence\HISTORY_CLEAR_PARITY_FINAL_CHECK_20260228-065511; docs\evidence\P5_12C_REVALIDATE_SUPERVISOR_20260301-224444; docs\evidence\P5_12C_A1317_NO_STATIC_SEED_REVALIDATE_20260302-001319
+
+- P5.12A Normative Slice (scope-locked, evidence-only)
+  - Objective: Lock P5.12 baseline by running deterministic read/contract audit without changing product or SSOT files.
+
+- Scope IN (exact):
+  - Route load/read smoke for wired pages under `ui-tauri/src/routes/`.
+  - Dispatcher contract checks using only these ops:
+    - `dashboard.get_state`
+    - `connections.list`
+    - `connections.schema_hint`
+    - `connections.preflight` (validation-path payload only)
+    - `usage.recent`
+    - `policies.persona.get_state`
+    - `policies.optimizations.get_state`
+    - `resilience.budget.get_state`
+    - `resilience.interceptors.get_state`
+    - `settings.get_state`
+  - Evidence artifact generation under `docs\evidence\P5_12A_<timestamp>\`.
+
+- Scope OUT (exact):
+  - Any product file edit.
+  - Any SSOT file edit.
+  - Any dispatcher op that mutates persisted state or runtime:
+    - `*.set_state`, `connections.create`, `connections.start`, `connections.stop`, `connections.delete`, `connections.copy_config`, `connections.dry_run`.
+  - Any provider/network runtime orchestration changes.
+
+- Allowed files (exact):
+  - Read-only inputs:
+    - `ui-tauri/src/routes/dashboard/+page.svelte`
+    - `ui-tauri/src/routes/connections/+page.svelte`
+    - `ui-tauri/src/routes/usage/summary/+page.svelte`
+    - `ui-tauri/src/routes/usage/history/+page.svelte`
+    - `ui-tauri/src/routes/policies/persona/+page.svelte`
+    - `ui-tauri/src/routes/policies/optimizations/+page.svelte`
+    - `ui-tauri/src/routes/resilience/budget/+page.svelte`
+    - `ui-tauri/src/routes/resilience/interceptors/+page.svelte`
+    - `ui-tauri/src/routes/settings/+page.svelte`
+    - `tools/headless_dispatch_v1.py`
+    - `src/mcp_server/manager.py`
+    - `src/config/manager.py`
+  - Writable outputs:
+    - `docs\evidence\P5_12A_<timestamp>\**`
+
+- Acceptance (deterministic, testable, evidence-bound):
+  - `changed_files.txt` must be `NO_CHANGES_APPLIED`.
+  - Contract matrix must show:
+    - all listed get/list ops return `ok:true`,
+    - validation-path response contains explicit `error.code` and `error.message`.
+  - UI static check must report `exit_code=0`.
+  - Any scope drift or forbidden op usage is `BLOCKER`.
+
+- P5.12B Dashboard refresh + Usage clear parity probe (evidence-only)
+  - Objective: Prove current behavior of global refresh and Usage/History Clear against dashboard live state, without product edits.
+  - Scope IN:
+    - Anchor extraction and runtime probe for:
+      - `ui-tauri/src/routes/+layout.svelte` (global refresh trigger path)
+      - `ui-tauri/src/routes/usage/history/+page.svelte` (clear action path)
+      - `ui-tauri/src/routes/dashboard/+page.svelte` (dashboard state load path)
+      - `tools/headless_dispatch_v1.py` (available usage ops contract)
+    - Evidence generation only under `docs\evidence\P5_12B_<timestamp>\`.
+  - Scope OUT:
+    - Any product file edit.
+    - Any SSOT file edit.
+  - Acceptance:
+    - Root-cause class for refresh/clear parity is explicit and anchor-backed.
+    - `changed_files.txt` is `NO_CHANGES_APPLIED`.
+    - Probe outputs include before/after payload snapshots for `usage.recent` and `dashboard.get_state`.
+
+- P5.12C Dashboard polish apply (refresh parity + clear parity + micro polish)
+  - Objective: Apply minimum-scope fixes from P5.12B findings while preserving thin-shell, single-entrypoint, and existing dashboard data binding.
+  - Scope IN:
+    - Global refresh propagation (header refresh must trigger dashboard/usage reload paths).
+    - Usage/History Clear parity (clear action must clear usage source-of-truth, not only local table view).
+    - Dashboard micro-polish slices (chart parity, alerts density, table readability/pagination) without changing provider/network logic.
+  - Allowed files (exact):
+    - `ui-tauri/src/routes/+layout.svelte`
+    - `ui-tauri/src/routes/dashboard/+page.svelte`
+    - `ui-tauri/src/routes/usage/summary/+page.svelte`
+    - `ui-tauri/src/routes/usage/history/+page.svelte`
+    - `tools/headless_dispatch_v1.py`
+  - Scope OUT:
+    - `src/mcp_server/*`, `src/config/*`, provider clients, runtime orchestration logic.
+    - Any non-dashboard/non-usage route edits.
+  - Acceptance:
+    - Header refresh updates timestamp and causes dashboard/usage pages to re-fetch in the same app session.
+    - Usage/History Clear removes rows from usage source-of-truth and dashboard reflects cleared state after refresh/navigation.
+    - No reintroduction of static demo seed data.
+    - `ui_static_check.txt` exit code is `0`.
+
+- P5.12D Dashboard micro-polish backlog (non-blocking, post-audit)
+  - Objective: Track remaining visual refinement items after parity closure without blocking release.
+  - Scope IN:
+    - KPI typography and icon semantics polish.
+    - Cost Trend axis/point readability polish.
+    - Cost Breakdown legend density/layout polish.
+    - Quick Health Alerts single-item composition polish.
+    - Recent Requests table spacing/column density/footer integration polish.
+    - Top Expensive Requests label semantics polish.
+  - Scope OUT:
+    - Any provider/network/protocol logic changes.
+    - Any runtime orchestration or dispatcher contract change unrelated to presentation.
+  - Acceptance:
+    - Each slice is packaged independently with before/after visual evidence and `ui_static_check` PASS.
+    - No regression to P5.12C parity guarantees (refresh propagation + usage clear parity + recent12 + refresh feedback).
+  - Evidence required:
+    - `docs\evidence\P5_12D_<timestamp>\`
+    - `commands_ran.txt`, `changed_files.txt`, `anchor_proofs.txt`, `summary.txt`, `ui_static_check.txt`
+  - Evidence indexed (PASS):
+    - `docs\evidence\P5_12D_SLICE_01_KPI_TYPO_ICON_POLISH_20260228-070644\`
+    - `docs\evidence\P5_12D_SLICE_02B_TREND_VISUAL_TUNING_20260228-071905\`
+    - `docs\evidence\P5_12D_SLICE_02C_TREND_XAXIS_READABILITY_20260228-072458\`
+    - `docs\evidence\P5_12D_SLICE_03_BREAKDOWN_INFORMATION_ARCH_20260228-072632\`
+    - `docs\evidence\P5_12D_SLICE_02D_03B_GRAPH_COMPOSITION_FINETUNE_20260228-074811\`
+    - `docs\evidence\CHART_ALIGNMENT_FINAL_POLISH_PIE_UP20_20260228-075720\`
+
+- P5.13 Dashboard residual polish plan (post-P5.12 closure)
+  - Objective: Complete remaining dashboard UX polish items without changing wiring/data contracts.
+  - Scope IN:
+    - Quick Health Alerts low-density composition refinement (single alert visual balance).
+    - Recent Requests table density/column balance/footer cohesion polish.
+    - Top Expensive Requests semantic label polish (human-readable primary label strategy).
+    - Global visual consistency pass for dashboard micro-typography/spacing.
+  - Scope OUT:
+    - Any provider/runtime/network/protocol logic change.
+    - Any dispatcher/manager contract change.
+    - Any non-dashboard route edit.
+  - Allowed files (exact):
+    - `ui-tauri/src/routes/dashboard/+page.svelte`
+  - Acceptance:
+    - Dashboard live data binding remains intact (no static seed reintroduction).
+    - Each polish slice has independent evidence and `ui_static_check` PASS.
+    - No regression to P5.12C parity guarantees.
+  - Evidence required:
+    - `docs\evidence\P5_13_<timestamp>\`
+    - `commands_ran.txt`, `changed_files.txt`, `anchor_proofs.txt`, `summary.txt`, `ui_static_check.txt`
+  - Evidence indexed (PASS):
+    - `docs\evidence\P5_13A_ALERT_THRESHOLD_AND_SPACING_TUNE_20260228-081116\`
+    - `docs\evidence\P5_13A_ALERT_CONTEXT_TRIM_20260228-081411\`
+    - `docs\evidence\P5_13B_RECENT_TABLE_EQUAL_SPACING_CENTER_ALIGN_20260228-082716\`
+    - `docs\evidence\P5_13C_REMOVE_ID_USE_TIMESTAMP_ONLY_20260228-083837\`
+
+- P5.14 Runtime Feature-Effect Proof + Residual Wiring Closure (post-P5.13)
+  - Decision ref: D-031 (Budget enforcement toggle deferred; monitor-only lock continues).
+  - Objective: Prove runtime effectiveness of user-facing PRS features before new polish expansion.
+  - Execution order (normative):
+    1) P5.14A Interceptors runtime effect proof
+    2) P5.14B Optimizations runtime effect proof (context caching + request dedup)
+    3) P5.14C Usage/Connections residual behavior fixes
+    4) P5.14D Settings functional validation
+    5) P5.14E Tooltip/helper assessment (post-functional gate)
+    6) P5.14F Final copy/meta corrections + UI polish + app icon
+  - Scope IN:
+    - Runtime-effect evidence packages for Interceptors/Optimizations.
+    - Residual functional behavior fixes in Usage/Connections/Settings after proofs.
+  - Scope OUT:
+    - Budget enforcement/blocking behavior changes (deferred by D-031).
+    - Broad visual refactors before functional gates are closed.
+  - Acceptance:
+    - Runtime-effect claims for Interceptors and Optimizations must be backed by deterministic evidence roots.
+    - If effect is absent, package must close as NARROW/BLOCKER with explicit fix queue entry.
+  - Evidence required (each slice):
+    - `docs\evidence\P5_14x_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
+  - Evidence indexed (PASS):
+    - `docs\evidence\P5_14A_FIX_INTERCEPTORS_RUNTIME_HOOK_V1_20260301-014756\`
+    - `docs\evidence\P5_14B_FIX_OPTIMIZATIONS_RUNTIME_BINDING_V1_20260301-014827\`
+    - P5.14C PASS (destructive usage.clear runtime reconfirmation completed): `docs\evidence\P5_14C_USAGE_CONNECTIONS_RESIDUAL_FIXES_V1_20260301-021346\`; `docs\evidence\SSOT_SYNC_P5_14C_PASS_20260303-234704\`
+    - `docs\evidence\P5_14D_SETTINGS_FUNCTIONAL_VALIDATION_20260301-022031\`
+    - P5.14E PASS (Slice-1 helper baseline for credentials_path implemented with deterministic toggle + modal reopen reset + live interaction reconfirmation): `docs\evidence\P5_14E_TOOLTIP_HELPER_ASSESSMENT_20260301-022540\`; `docs\evidence\SSOT_SYNC_P5_14E_CARRY_FORWARD_20260303-235345\`; `docs\evidence\P5_14E_SLICE1_HELPER_BASELINE_20260304-000254\`; `docs\evidence\P5_14E_SLICE1_HELPER_STATE_RESET_20260304-001918\`; `docs\evidence\SSOT_SYNC_P5_14E_PASS_20260304-002711\`; `docs\evidence\P5_14E_NON_DASH_HELPER_LIVE_RECONFIRM_20260304-010400\`
+    - `docs\evidence\P5_14_RUNTIME_EFFECT_TERMINAL_PROOF_V3_20260301-020833\`
+    - P5.14F PASS (historical evidence retained; fresh reconfirmation complete for edit+browse+usage filters+export save-dialog flow + dashboard hybrid polish re-check + global layout polish + Usage/History filter row release polish + Connections Vault credentials_path browse/use closure + Persona Lite connection-target de-legacy + built-in mini-library preset seed + post-hotfix dual-tool runtime reconfirmation): `docs\evidence\UI_FINAL_FIX_QUEUE_APPLY_V3_20260301-090446\`; `docs\evidence\P5_14F_RECONFIRM_20260302-020642\`; `docs\evidence\P5_14F_SLICE_A_20260302-023124\`; `docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711\`; `docs\evidence\P5_14F_COST_BREAKDOWN_NONZERO_CENTER_20260303-045857\`; `docs\evidence\P5_14F_DASH_QUICK_ALERTS_THRESHOLDS_20260303-051400\`; `docs\evidence\P5_14F_DASH_RECENT_REQUESTS_FIX4_20260303-055859\`; `docs\evidence\P5_14F_DASH_TOP_EXPENSIVE_FIX2_20260303-061419\`; `docs\evidence\P5_14F_DASH_TOP_EXPENSIVE_DYNAMIC_ROWS_20260303-061747\`; `docs\evidence\P5_14F_GLOBAL_LAYOUT_POLISH_20260303-062339\`; `docs\evidence\P5_14F_USAGE_FILTERS_DROPDOWN_WIDTH_FIX_20260303-072429\`; `docs\evidence\P5_14F_USAGE_HISTORY_FILTERS_RIGHT_ALIGN_20260303-072949\`; `docs\evidence\VAULT_V1_0_BASIC_20260303-213215\`; `docs\evidence\VAULT_SLICE_B_HOTFIX_20260303-220024\`; `docs\evidence\VAULT_SLICE_B_SUPERVISOR_HOTFIX_20260303-222100\`; `docs\evidence\VAULT_SLICE_B_BROWSE_DIALOG_HOTFIX_20260303-225421\`; `docs\evidence\USAGE_FILTERS_MIXED_EVENT_HOTFIX_20260304-005358\`; `docs\evidence\USAGE_FAKE_DATA_MINI_RECONFIRM_20260304-011210\`; `docs\evidence\USAGE_MODELID_FILTER_HOTFIX_AND_SEED_20260304-013039\`; `docs\evidence\PERSONA_CONN_TARGETS_HOTFIX_20260304-033643\`; `docs\evidence\PERSONA_PRESET_LIBRARY_SEED_20260304-035015\`; `docs\evidence\VAULT_RUNTIME_BLOCKER_REPRO_20260304-082108\` (P5.14F slices: Connections edit+browse + Usage/History filters/export + Dashboard KPI/charts/alerts/recent/top-expensive + global layout polish + Usage/History filter row release polish + Connections Vault credentials_path browse/use + Persona Lite de-legacy target mapping + built-in mini-library presets + vault runtime blocker repro/hotfix + dual-tool runtime reconfirm)
+
+- V1.0 Release Gate Closure Checklist (post-P5.14, no scope expansion)
+  - Objective: Close release blockers on current surfaces before V1.1 provider/cost expansion.
+  - Gate set (OPEN -> PASS required):
+    1) GATE-V10-UI-SMOKE PASS: Single-session live smoke on Dashboard/Connections/Usage/Policies/Resilience/Settings with no blocker regressions. Evidence: `docs\evidence\V10_GATE_UI_SMOKE_20260304-20260304-090444\`
+    2) GATE-V10-DATA-SAFETY PASS: Usage clear/export behavior reconfirmed with deterministic evidence and rollback-safe note. Evidence: `docs\evidence\V10_GATE_DATA_SAFETY_20260304-20260304-091329\`; `docs\evidence\V10_GATE_UI_SMOKE_20260304-20260304-090444\`; `docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711\`
+    3) GATE-V10-DOCS-LEGAL PASS: Minimum legal/compliance + user guide consistency review completed; comprehensive legal/compliance pack and official EU/provider source register are retained, and release contact map (security/support/legal/product/general) is finalized. Evidence: `docs\evidence\V10_GATE_DOCS_LEGAL_20260304-093733\`; `docs\evidence\V10_GATE_DOCS_LEGAL_PASS_20260304-214636\`
+    4) GATE-V10-RC-READINESS PASS: Release candidate checklist completed (checkpoint + known issues + support boundaries) with explicit contact map and rollback-safe checkpoint references. Evidence: `docs\evidence\V10_GATE_RC_READINESS_20260304-223507\`
+  - Acceptance:
+    - All four gates are PASS with explicit evidence; any open item keeps V1.0 in REVALIDATE.
+  - Evidence required:
+    - `docs\evidence\V10_GATE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
+
+- V1.1 Provider Freeze Gate (4-provider lock)
+  - Decision ref: D-032.
+  - Objective: Lock production-candidate provider scope before LLM cost module acceptance.
+  - Scope IN:
+    - Vertex AI, Azure OpenAI, Bedrock, OpenAI provider readiness checks.
+  - Scope OUT:
+    - Any fifth provider onboarding before freeze closure.
+  - Acceptance:
+    - For each of the 4 providers: connection create/update/preflight/runtime smoke evidence exists.
+    - Usage rows preserve provider + model identity for downstream cost analysis.
+    - Freeze statement is explicit in STATUS/TASKS (no extra provider promise).
+  - Evidence required:
+    - `docs\evidence\V11_PROVIDER_FREEZE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
+  - Progress snapshot (current):
+    - Vertex AI PASS (live reconfirm), OpenAI PASS (live create/update/preflight/runtime + usage identity), Bedrock BLOCKER (connection/auth + invocation path PASS but usable live generation blocked by account quota + current adapter model allowlist constraints), Azure OpenAI OPEN.
+    - Evidence: `docs\evidence\V11_PROVIDER_VERTEX_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128\`; `docs\evidence\Bedrock_Real_Tests\Bedrock_Live_Tests_Results_Evalution.md`; `docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619\`; `docs\evidence\V11_BEDROCK_APIKEY_MODE_20260305-085503\`
+  - Carry-forward note (post-freeze UI consistency):
+    - Usage Summary KPI cards currently remain global under active filters while table/export follows filters; non-blocking for provider freeze, to be handled as follow-up polish.
+
+- V1.1 LLM Lite Cost Gate (trust + consistency)
+  - Decision ref: D-032.
+  - Objective: Prove user-visible cost control consistency after LLM Lite integration.
+  - Acceptance:
+    - Request-level cost is computed deterministically from stored usage fields and active pricing source.
+    - Same-row values are consistent across backend payload, UI tables/cards, and CSV export.
+    - Missing/unsupported pricing path is explicit and non-misleading (no silent fake-zero PASS).
+    - Cross-provider sample set includes Vertex AI, Azure OpenAI, Bedrock, OpenAI.
+  - Evidence required:
+    - `docs\evidence\V11_LLM_COST_GATE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`, `test.txt`

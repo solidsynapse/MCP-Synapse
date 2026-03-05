@@ -17,6 +17,29 @@ def _fail(code: str, message: str) -> dict:
     return {"ok": False, "status": "error", "text": None, "error": {"code": code, "message": message}}
 
 
+def _write_payload(payload: dict) -> None:
+    text = json.dumps(payload, ensure_ascii=False)
+    try:
+        reconfigure = getattr(sys.stdout, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        sys.stdout.write(text)
+        return
+    except UnicodeEncodeError:
+        safe_text = text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        try:
+            buffer = getattr(sys.stdout, "buffer", None)
+            if buffer is not None:
+                buffer.write(safe_text.encode("utf-8", errors="replace"))
+                return
+        except Exception:
+            pass
+        sys.stdout.write(safe_text)
+
+
 def _connections_response(result: dict) -> dict:
     ok = bool(result.get("ok"))
     errors = list(result.get("errors") or [])
@@ -49,31 +72,224 @@ def _connections_response(result: dict) -> dict:
 def _schema_hint_response(result: dict) -> dict:
     ok = bool(result.get("ok"))
     errors = list(result.get("errors") or [])
-    warnings = list(result.get("warnings") or [])
     raw_hint = result.get("schema_hint")
     hint = raw_hint if isinstance(raw_hint, dict) else {}
     fields = hint.get("fields")
-    defaults = hint.get("suggested_defaults")
+    defaults = hint.get("suggested_defaults") if isinstance(hint.get("suggested_defaults"), dict) else hint.get("defaults")
     notes = hint.get("notes")
 
     if ok:
-        data = {
+        schema_hint_payload = {
             "fields": list(fields) if isinstance(fields, list) else [],
-            "defaults": dict(defaults) if isinstance(defaults, dict) else {},
+            "suggested_defaults": dict(defaults) if isinstance(defaults, dict) else {},
             "notes": list(notes) if isinstance(notes, list) else [],
-            "warnings": warnings,
         }
-        return {"ok": True, "status": "success", "data": data, "error": None}
+        return {
+            "ok": True,
+            "status": "success",
+            "text": None,
+            "schema_hint": schema_hint_payload,
+            "error": None,
+        }
 
     message = "; ".join([str(e) for e in errors]) if errors else "schema_hint_failed"
     return {
         "ok": False,
         "status": "error",
-        "data": None,
+        "text": None,
+        "schema_hint": None,
         "error": {
             "code": "schema_hint_failed",
             "message": message,
-            "details": {"errors": errors, "warnings": warnings},
+        },
+    }
+
+
+def _vault_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    warnings = list(result.get("warnings") or [])
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    error_payload = None
+    status = "success" if ok else "error"
+    if not ok:
+        message = "; ".join([str(e) for e in errors]) if errors else "vault_error"
+        error_payload = {"code": "vault_error", "message": message}
+    return {
+        "ok": ok,
+        "status": status,
+        "text": None,
+        "error": error_payload,
+        "errors": errors,
+        "warnings": warnings,
+        "data": data,
+    }
+
+
+def _persona_state_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    state = result.get("state") if isinstance(result.get("state"), dict) else None
+    if ok:
+        return {
+            "ok": True,
+            "status": "success",
+            "text": None,
+            "error": None,
+            "state": state,
+            "errors": [],
+            "warnings": list(result.get("warnings") or []),
+        }
+
+    message = "; ".join([str(e) for e in errors]) if errors else "invalid_persona_state"
+    code = str(result.get("error_code") or "invalid_persona_state")
+    return {
+        "ok": False,
+        "status": "error",
+        "text": None,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "state": state,
+        "errors": errors,
+        "warnings": list(result.get("warnings") or []),
+    }
+
+
+def _optimizations_state_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    state = result.get("state") if isinstance(result.get("state"), dict) else None
+    if ok:
+        return {
+            "ok": True,
+            "status": "success",
+            "text": None,
+            "error": None,
+            "state": state,
+            "errors": [],
+            "warnings": list(result.get("warnings") or []),
+        }
+
+    message = "; ".join([str(e) for e in errors]) if errors else "invalid_optimizations_state"
+    code = str(result.get("error_code") or "invalid_optimizations_state")
+    return {
+        "ok": False,
+        "status": "error",
+        "text": None,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "state": state,
+        "errors": errors,
+        "warnings": list(result.get("warnings") or []),
+    }
+
+
+def _resilience_budget_state_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    state = result.get("state") if isinstance(result.get("state"), dict) else None
+    if ok:
+        return {
+            "ok": True,
+            "status": "success",
+            "text": None,
+            "error": None,
+            "state": state,
+            "errors": [],
+            "warnings": list(result.get("warnings") or []),
+        }
+
+    message = "; ".join([str(e) for e in errors]) if errors else "invalid_resilience_budget_state"
+    code = str(result.get("error_code") or "invalid_resilience_budget_state")
+    return {
+        "ok": False,
+        "status": "error",
+        "text": None,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "state": state,
+        "errors": errors,
+        "warnings": list(result.get("warnings") or []),
+    }
+
+
+def _resilience_interceptors_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    result_payload = result.get("result") if isinstance(result.get("result"), dict) else None
+    if ok:
+        return {
+            "ok": True,
+            "status": "success",
+            "result": result_payload,
+            "error": None,
+        }
+
+    message = "; ".join([str(e) for e in errors]) if errors else "invalid_resilience_interceptors_state"
+    code = str(result.get("error_code") or "invalid_resilience_interceptors_state")
+    return {
+        "ok": False,
+        "status": "error",
+        "result": None,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+    }
+
+
+def _dashboard_state_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    result_payload = result.get("result") if isinstance(result.get("result"), dict) else None
+    if ok:
+        return {
+            "ok": True,
+            "status": "success",
+            "result": result_payload,
+            "data": {"result": result_payload} if isinstance(result_payload, dict) else None,
+            "error": None,
+        }
+    message = "; ".join([str(e) for e in errors]) if errors else "invalid_dashboard_state"
+    code = str(result.get("error_code") or "invalid_dashboard_state")
+    return {
+        "ok": False,
+        "status": "error",
+        "result": None,
+        "data": None,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+    }
+
+
+def _settings_state_response(result: dict) -> dict:
+    ok = bool(result.get("ok"))
+    errors = list(result.get("errors") or [])
+    result_payload = result.get("result") if isinstance(result.get("result"), dict) else None
+    if ok:
+        return {
+            "ok": True,
+            "status": "success",
+            "result": result_payload,
+            "error": None,
+        }
+    message = "; ".join([str(e) for e in errors]) if errors else "invalid_settings_state"
+    code = str(result.get("error_code") or "invalid_settings_state")
+    return {
+        "ok": False,
+        "status": "error",
+        "result": None,
+        "error": {
+            "code": code,
+            "message": message,
         },
     }
 
@@ -137,12 +353,42 @@ def _dispatch_op(payload: dict) -> dict:
         mgr = ServerManager()
         return _connections_response(mgr.create_connection(connection_payload))
 
+    if op == "connections.update":
+        connection_payload = payload.get("connection")
+        if not isinstance(connection_payload, dict):
+            connection_payload = {}
+        mgr = ServerManager()
+        return _connections_response(
+            mgr.update_connection(
+                {
+                    "connection_id": payload.get("connection_id"),
+                    "connection": connection_payload,
+                }
+            )
+        )
+
     if op == "connections.preflight":
         connection_payload = payload.get("connection")
         if not isinstance(connection_payload, dict):
             connection_payload = {}
         mgr = ServerManager()
         return _connections_response(mgr.preflight_connection(connection_payload))
+
+    if op == "connections.start":
+        mgr = ServerManager()
+        return _connections_response(mgr.start_connection(payload))
+
+    if op == "connections.stop":
+        mgr = ServerManager()
+        return _connections_response(mgr.stop_connection(payload))
+
+    if op == "connections.delete":
+        mgr = ServerManager()
+        return _connections_response(mgr.delete_connection(payload))
+
+    if op == "connections.stop_all":
+        mgr = ServerManager()
+        return _connections_response(mgr.stop_all_connections())
 
     if op == "connections.schema_hint":
         mgr = ServerManager()
@@ -155,6 +401,26 @@ def _dispatch_op(payload: dict) -> dict:
     if op == "connections.dry_run":
         mgr = ServerManager()
         return _connections_response(mgr.dry_run_connection(payload))
+
+    if op == "vault.list":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_list())
+
+    if op == "vault.create":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_create(payload))
+
+    if op == "vault.read":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_read(payload))
+
+    if op == "vault.delete":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_delete(payload))
+
+    if op == "vault.pick_credentials_path":
+        mgr = ServerManager()
+        return _vault_response(mgr.vault_pick_credentials_path())
 
     if op == "bridges.list":
         data = cfg._read_config()
@@ -191,7 +457,13 @@ def _dispatch_op(payload: dict) -> dict:
         for r in rows:
             out_rows.append(
                 {
+                    "id": r.get("id"),
                     "timestamp": r.get("timestamp"),
+                    "connection_id": r.get("agent_id"),
+                    "connection_name": r.get("agent_name"),
+                    "provider": r.get("provider"),
+                    "model_id": r.get("model_id"),
+                    "request_id": r.get("request_id"),
                     "status": r.get("status"),
                     "error_type": r.get("error_type"),
                     "latency_ms": r.get("latency_ms"),
@@ -214,6 +486,69 @@ def _dispatch_op(payload: dict) -> dict:
                 ensure_ascii=False,
             )
         )
+
+    if op == "usage.clear":
+        from src.data.usage_db import UsageDatabase
+
+        db = UsageDatabase()
+        db.clear_usage()
+        return _ok(
+            json.dumps(
+                {
+                    "cleared": True,
+                    "rows": [],
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    if op == "policies.persona.get_state":
+        mgr = ServerManager()
+        return _persona_state_response(mgr.get_policies_persona_state(payload))
+
+    if op == "policies.persona.set_state":
+        mgr = ServerManager()
+        return _persona_state_response(mgr.set_policies_persona_state(payload))
+
+    if op == "policies.optimizations.get_state":
+        mgr = ServerManager()
+        return _optimizations_state_response(mgr.get_policies_optimizations_state(payload))
+
+    if op == "policies.optimizations.set_state":
+        mgr = ServerManager()
+        return _optimizations_state_response(mgr.set_policies_optimizations_state(payload))
+
+    if op == "resilience.budget.get_state":
+        mgr = ServerManager()
+        return _resilience_budget_state_response(mgr.get_resilience_budget_state(payload))
+
+    if op == "resilience.budget.set_state":
+        mgr = ServerManager()
+        return _resilience_budget_state_response(mgr.set_resilience_budget_state(payload))
+
+    if op == "resilience.interceptors.get_state":
+        mgr = ServerManager()
+        return _resilience_interceptors_response(mgr.get_resilience_interceptors_state(payload))
+
+    if op == "resilience.interceptors.set_state":
+        mgr = ServerManager()
+        return _resilience_interceptors_response(mgr.set_resilience_interceptors_state(payload))
+
+    if op == "dashboard.get_state":
+        mgr = ServerManager()
+        return _dashboard_state_response(mgr.get_dashboard_state(payload))
+
+    if op == "dashboard.set_state":
+        mgr = ServerManager()
+        return _dashboard_state_response(mgr.set_dashboard_state(payload))
+
+    if op == "settings.get_state":
+        mgr = ServerManager()
+        return _settings_state_response(mgr.get_settings_state(payload))
+
+    if op == "settings.set_state":
+        mgr = ServerManager()
+        return _settings_state_response(mgr.set_settings_state(payload))
 
     bridge_id = payload.get("bridge_id")
     if not isinstance(bridge_id, str) or not bridge_id.strip():
@@ -301,12 +636,12 @@ def main() -> int:
 
     if args.prompt and args.prompt_file:
         payload = _fail("prompt_args_conflict", "Use either --prompt or --prompt-file, not both.")
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+        _write_payload(payload)
         return 2
 
     if not args.prompt and not args.prompt_file:
         payload = _fail("prompt_missing", "One of --prompt or --prompt-file is required.")
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+        _write_payload(payload)
         return 2
 
     if args.prompt_file:
@@ -314,7 +649,7 @@ def main() -> int:
             prompt_text = Path(args.prompt_file).read_text(encoding="utf-8-sig").rstrip("\r\n")
         except Exception as exc:
             payload = _fail("prompt_file_read_failed", str(exc))
-            sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+            _write_payload(payload)
             return 2
     else:
         prompt_text = str(args.prompt)
@@ -332,7 +667,7 @@ def main() -> int:
             },
         }
 
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    _write_payload(payload)
     return 0
 
 

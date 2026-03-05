@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static STOP_ALL_CONNECTIONS_ONCE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DispatchError {
@@ -13,7 +16,17 @@ pub struct DispatchResult {
     pub ok: bool,
     pub status: String,
     pub text: Option<String>,
+    pub result: Option<serde_json::Value>,
+    pub state: Option<serde_json::Value>,
     pub error: Option<DispatchError>,
+    pub errors: Option<Vec<String>>,
+    pub warnings: Option<Vec<String>>,
+    pub schema_hint: Option<serde_json::Value>,
+    pub data: Option<serde_json::Value>,
+    pub normalized_payload: Option<serde_json::Value>,
+    pub config_text: Option<String>,
+    pub dry_run_trace: Option<serde_json::Value>,
+    pub connections: Option<Vec<serde_json::Value>>,
 }
 
 fn repo_root_from_manifest_dir() -> Result<PathBuf, String> {
@@ -58,11 +71,35 @@ fn dispatch_execute_request_v1(agent_id: String, prompt: String) -> Result<Dispa
     Ok(parsed)
 }
 
+fn best_effort_stop_all_connections() {
+    let repo_root = match repo_root_from_manifest_dir() {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let script = repo_root.join("tools").join("headless_dispatch_v1.py");
+    let python = std::env::var("MCP_SYNAPSE_PYTHON").unwrap_or_else(|_| "python".to_string());
+    let prompt = r#"{"op":"connections.stop_all"}"#;
+    let _ = Command::new(python)
+        .arg(script)
+        .arg("--agent-id")
+        .arg("connections")
+        .arg("--prompt")
+        .arg(prompt)
+        .output();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![dispatch_execute_request_v1])
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if !STOP_ALL_CONNECTIONS_ONCE.swap(true, Ordering::SeqCst) {
+                    best_effort_stop_all_connections();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

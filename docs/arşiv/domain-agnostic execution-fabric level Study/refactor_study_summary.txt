@@ -1,0 +1,18 @@
+﻿İki raporun kısa karar özeti:
+- 14 gün release hedefi kritikse: "Hemen tam refaktör" yüksek olasılıkla takvimi kırar.
+- Stratejik değer açısından: dönüşüm değerlidir; ama zamanlama MVP sonrasına alınmalıdır.
+- Önerilen karar: Hybrid (MVP öncesi guardrail + MVP sonrası fazlı refaktör).
+
+Karşılaştırmalı skor (1 kötü - 5 iyi):
+1) 14 günde dağıtım olasılığı:
+   - Hemen refaktör: 1
+   - MVP sonrası refaktör: 4
+2) Uzun vadeli platform değeri:
+   - Hemen refaktör: 5
+   - MVP sonrası refaktör: 4
+3) Toplam iş riski (teslimat + regresyon):
+   - Hemen refaktör: 2
+   - MVP sonrası refaktör: 4
+
+Net öneri:
+- İlk ürün SaaS girişimi bağlamında: "Önce dağıtım, sonra kontrollü dönüşüm".

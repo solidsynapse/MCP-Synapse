@@ -1,0 +1,115 @@
+﻿OPERASYON PAKETI - 14 GUN CHECKLIST + FAZ A BACKLOG + TEK SAYFA YONETICI OZETI
+Durum: Teorik plan, uygulama karari icin hazirlik
+
+A) 14 GUNLUK UYGULAMA CHECKLISTI (MVP release odakli)
+Hedef: installer + beta tester dagitimi
+
+Gun 1-2: Scope freeze
+1) Release disi is kalemlerini dondur.
+2) No new architecture policy: core refactor ve boundary expansion yok.
+3) Risk listesi: blocker / high / medium siniflandirmasi.
+
+Gun 3-4: Packaging hardening
+1) Installer build akisini 2 kez uctan uca calistir.
+2) Fresh machine install/uninstall smoke.
+3) Versioning + rollback paketini dogrula.
+
+Gun 5-6: Runtime stability pass
+1) Start/stop/connection lifecycle testleri.
+2) Dispatcher contract testleri (success/error payload tutarliligi).
+3) Encoding ve Windows process lifecycle kontrolleri.
+
+Gun 7-8: Data and observability pass
+1) Usage logging ve dashboard kritik metrikleri kontrol et.
+2) Error taxonomy tutarliligini kontrol et.
+3) Production-like sample run ile log inceleme.
+
+Gun 9-10: Beta readiness pass
+1) Known issues listesi + etkileri.
+2) Support runbook + quick fix proseduru.
+3) Beta onboarding metni ve ilk geri bildirim formu.
+
+Gun 11-12: Regression gate
+1) Kritik test seti tekrari (release aday build).
+2) Rollback provasi.
+3) Go/No-Go metrik tablosu guncelleme.
+
+Gun 13-14: Release decision
+1) Installer final sign-off.
+2) Dagitim paketi ve ileti simgeleri son kontrol.
+3) Beta yayini ve izleme.
+
+B) FAZ A ICIN NET BACKLOG ONERISI (MVP sonrasi ilk faz)
+Faz A amaci: Cekirdek donusumu baslatmadan once kontrat zemini ve risk kontrolu.
+
+Backlog kalemleri:
+A1) Core contract taslagi
+- Cikti: RequestEnvelope, ExecutionResult, EventEnvelope taslaklari
+- Efor: M
+- Bagimlilik: Yok
+- Kabul kriteri: Cekirdek ekip onayi + backward compatibility notlari
+
+A2) Error taxonomy netlestirme
+- Cikti: Canonical error mapping tablosu
+- Efor: S
+- Bagimlilik: A1
+- Kabul kriteri: Test senaryolari ile eslestirme
+
+A3) Hook lifecycle tasarimi
+- Cikti: pre_context -> policy -> routing -> execution -> post sirasi
+- Efor: M
+- Bagimlilik: A1
+- Kabul kriteri: Deterministic order tanimi
+
+A4) Compatibility strategy
+- Cikti: Eski payloadlar icin compatibility adapter plani
+- Efor: M
+- Bagimlilik: A1, A2
+- Kabul kriteri: "No forced client break" ilkesinin yazili garantisi
+
+A5) Provider boundary policy
+- Cikti: Core vs Adapter sorumluluk matrisi
+- Efor: S
+- Bagimlilik: A1
+- Kabul kriteri: provider-specific branch kurallari net
+
+A6) Faz gecis KPI seti
+- Cikti: Her faz icin giris/cikis metrikleri
+- Efor: S
+- Bagimlilik: A1-A5
+- Kabul kriteri: karar kapilarinda olculebilir metrik
+
+C) TEK SAYFA YONETICI OZETI (KARAR KAPISI)
+Karar sorusu:
+- "14 gun icinde urunu dagitip, cekirdek donusumunu hemen sonra fazli sekilde baslatmak" mi?
+
+Durum resmi:
+1) Teknik temel var: provider seam + merkezi execution entrypoint + observer.
+2) Teknik borc var: policy enforcement wiring ve provider-specific kalintilar.
+3) Tam refaktoru simdi baslatmak release takvimini zorlar.
+
+Secenekler:
+1) Simdi tam refaktor
+- Artisi: platforma hizli gecis
+- Eksisi: 14 gun hedefi icin yuksek teslimat riski
+
+2) Hybrid (onerilen)
+- MVP once yayin
+- Hemen ardindan Faz A backlogu ile donusum baslat
+- Artisi: zamaninda cikis + kontrollu platformlasma
+
+Karar metricleri (Go kapisi):
+1) Installer readiness: PASS
+2) Kritik regression seti: PASS
+3) Rollback provasi: PASS
+4) Beta support runbook: PASS
+
+No-Go tetikleyicileri:
+1) Installer veya rollback kararsiz
+2) Kritik runtime akista belirsiz hata
+3) Destek/runbook hazir degil
+
+Net yonetici onerisi:
+- Kisa vade: release disiplini ile MVP cikisi.
+- Orta vade: Faz A backlogu ile cekirdek donusumunu geciktirmeden baslat.
+- Sonuc: sirket hem zaman kaybetmez hem de platform degerini kaybetmez.
