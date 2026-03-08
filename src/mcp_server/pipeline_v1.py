@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 import time
+import re
 import uuid
 from typing import Any
 
@@ -15,6 +16,55 @@ from src.mcp_server.persona_lite_p3_p2 import assemble_persona_lite_request
 
 
 logger = logging.getLogger(__name__)
+
+
+def _canonical_provider(provider_id: object) -> str:
+    raw = str(provider_id or "").strip().lower()
+    if raw == "vertex":
+        return "vertex_ai"
+    return raw or "unknown"
+
+
+def _sanitize_raw_detail(value: object) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+    text = re.sub(r"(?i)bearer\s+[a-z0-9._\-+/=]+", "Bearer [REDACTED]", text)
+    text = re.sub(r"(?i)(api[_\- ]?key|token|secret|authorization)\s*[:=]\s*[^;\s]+", r"\1=[REDACTED]", text)
+    if len(text) > 700:
+        text = text[:700]
+    return text
+
+
+def _runtime_error_code(provider_id: str, reason: str) -> str:
+    provider = str(provider_id or "").lower()
+    msg = str(reason or "").lower()
+    if "hf_enable_network must be true" in msg or "network gate is disabled" in msg:
+        return "NETWORK_GATE_BLOCKED"
+    if "model not found" in msg or "not found" in msg or "404" in msg:
+        return "MODEL_NOT_FOUND"
+    if provider in {"vertex", "vertex_ai"} and ("permission" in msg or "access denied" in msg):
+        return "MODEL_NOT_FOUND"
+    return "EXECUTION_FAILED"
+
+
+def _build_runtime_error_envelope(
+    *,
+    provider_id: str,
+    model_id: str,
+    request_id: str,
+    reason: str,
+    raw: object,
+) -> dict[str, object]:
+    envelope: dict[str, object] = {
+        "code": _runtime_error_code(provider_id, reason),
+        "provider": _canonical_provider(provider_id),
+        "model_id": str(model_id or "").strip() or None,
+        "request_id": str(request_id or "").strip() or None,
+        "reason": str(reason or "").strip() or "execution failed",
+    }
+    sanitized = _sanitize_raw_detail(raw)
+    if sanitized:
+        envelope["raw"] = sanitized
+    return envelope
 
 
 @dataclass(frozen=True)
@@ -96,13 +146,25 @@ class ProviderAdapterV1:
             return result
         except Exception as exc:
             latency_ms = int((time.perf_counter() - start) * 1000)
+            provider_value = str(getattr(client, "provider_id", context.provider_id))
+            model_value = str(getattr(client, "model_id", context.model_id))
+            canonical_error = _build_runtime_error_envelope(
+                provider_id=provider_value,
+                model_id=model_value,
+                request_id=request_id,
+                reason=str(exc),
+                raw=exc,
+            )
             try:
                 setattr(exc, "latency_ms", latency_ms)
                 setattr(exc, "status", "error")
                 setattr(exc, "error_type", exc.__class__.__name__)
                 setattr(exc, "request_id", request_id)
-                setattr(exc, "provider", str(getattr(client, "provider_id", context.provider_id)))
-                setattr(exc, "model_id", str(getattr(client, "model_id", context.model_id)))
+                setattr(exc, "provider", provider_value)
+                setattr(exc, "model_id", model_value)
+                setattr(exc, "code", str(canonical_error.get("code") or "EXECUTION_FAILED"))
+                setattr(exc, "reason", str(canonical_error.get("reason") or str(exc)))
+                setattr(exc, "canonical_error", canonical_error)
             except Exception:
                 pass
             raise

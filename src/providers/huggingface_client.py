@@ -9,7 +9,7 @@ from typing import Any
 
 
 _HTTP_TIMEOUT_SECONDS = 30
-_DEFAULT_HF_ENDPOINT = "https://api-inference.huggingface.co"
+_DEFAULT_HF_ENDPOINT = "https://router.huggingface.co/v1"
 
 
 class HuggingFaceProviderClient:
@@ -20,21 +20,25 @@ class HuggingFaceProviderClient:
         self.model_id = str(model_id)
         self._credentials_path = str(credentials_path)
         base = str(agent.get("hf_endpoint") or _DEFAULT_HF_ENDPOINT).strip()
-        self._base = base.rstrip("/")
+        self._base = self._normalize_base_url(base)
 
     def generate_content(self, prompt: str, *, stream: bool = False) -> dict[str, Any]:
         if stream:
             raise NotImplementedError("huggingface streaming not implemented")
 
 
-        if not bool(self._agent.get("hf_enable_network") or False):
+        if not self._is_network_enabled(self._agent.get("hf_enable_network")):
             raise NotImplementedError(
                 "huggingface network gate is disabled; set agent config hf_enable_network: true to enable real calls"
             )
 
         token = self._read_token(self._credentials_path)
-        url = f"{self._base}/models/{urllib.parse.quote(self.model_id)}"
-        payload = {"inputs": str(prompt)}
+        url = f"{self._base}/chat/completions"
+        payload = {
+            "model": self.model_id,
+            "messages": [{"role": "user", "content": str(prompt)}],
+            "stream": False,
+        }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url=url,
@@ -70,12 +74,21 @@ class HuggingFaceProviderClient:
             raise RuntimeError(f"Invalid JSON response: {exc}; body={snippet}") from exc
 
         text = self._extract_text(parsed)
+        usage = parsed.get("usage") if isinstance(parsed, dict) else None
+        tokens_in = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        tokens_out = usage.get("completion_tokens") if isinstance(usage, dict) else None
         return {
             "text": text,
-            "tokens_input": None,
-            "tokens_output": None,
+            "tokens_input": tokens_in,
+            "tokens_output": tokens_out,
             "cost_usd": None,
         }
+
+    def _is_network_enabled(self, raw_value: Any) -> bool:
+        if isinstance(raw_value, bool):
+            return raw_value
+        value = str(raw_value or "").strip().lower()
+        return value in {"1", "true", "yes", "on"}
 
     def _read_token(self, credentials_path: str) -> str:
         path = Path(str(credentials_path)).expanduser()
@@ -87,16 +100,36 @@ class HuggingFaceProviderClient:
         return token
 
     def _extract_text(self, parsed: Any) -> str:
+        if isinstance(parsed, dict):
+            if "error" in parsed:
+                raise RuntimeError(str(parsed.get("error") or "Unknown error"))
+            choices = parsed.get("choices")
+            if isinstance(choices, list) and choices:
+                first = choices[0]
+                if isinstance(first, dict):
+                    msg = first.get("message")
+                    if isinstance(msg, dict) and "content" in msg:
+                        return str(msg.get("content") or "")
+                    if "text" in first:
+                        return str(first.get("text") or "")
+            if "generated_text" in parsed:
+                return str(parsed.get("generated_text") or "")
         if isinstance(parsed, list) and parsed:
             first = parsed[0]
             if isinstance(first, dict) and "generated_text" in first:
                 return str(first.get("generated_text") or "")
-        if isinstance(parsed, dict):
-            if "error" in parsed:
-                raise RuntimeError(str(parsed.get("error") or "Unknown error"))
-            if "generated_text" in parsed:
-                return str(parsed.get("generated_text") or "")
         raise RuntimeError("Malformed Hugging Face response")
+
+    def _normalize_base_url(self, raw: str) -> str:
+        base = str(raw or "").strip()
+        if not base:
+            base = _DEFAULT_HF_ENDPOINT
+        base = base.rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base[: -len("/chat/completions")]
+        if base.endswith("/v1"):
+            return base
+        return f"{base}/v1"
 
     def _decode_snippet(self, raw: bytes, *, limit: int = 500) -> str:
         text = raw.decode("utf-8", errors="replace").strip()

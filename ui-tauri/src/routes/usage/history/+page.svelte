@@ -122,6 +122,14 @@
     return row.tokens_input + row.tokens_output;
   }
 
+  function pricingStatus(row: UsageRow): string {
+    const total = totalTokens(row);
+    if (total == null) return "N/A";
+    if (total <= 0) return "No usage";
+    if (typeof row.cost_usd === "number" && !Number.isNaN(row.cost_usd) && row.cost_usd > 0) return "Estimated";
+    return "Missing pricing data";
+  }
+
   function tokenRangeLabel(range: TokenRangeId): string {
     if (range === "0_100") return "0-100";
     if (range === "101_1000") return "101-1,000";
@@ -188,6 +196,14 @@
       sort,
       modelIdFilter,
       totalTokensRange,
+    })
+  );
+
+  const hasMissingPricingDisclosure = $derived(() =>
+    displayRows().some((row) => {
+      const total = totalTokens(row);
+      if (total == null || total <= 0) return false;
+      return !(typeof row.cost_usd === "number" && !Number.isNaN(row.cost_usd) && row.cost_usd > 0);
     })
   );
 
@@ -373,7 +389,7 @@
 
   function buildCsv(rowsToExport: UsageRow[]) {
     const delimiter = csvDelimiter();
-    const headers = ["Time", "Connection", "ID", "Provider", "Status", "Latency (ms)", "Tokens in", "Tokens out", "Cost (USD)"];
+    const headers = ["Time", "Connection", "ID", "Provider", "Status", "Latency (ms)", "Tokens in", "Tokens out", "Cost (USD)", "Pricing status"];
     const lines: string[] = [headers.join(delimiter)];
     for (const r of rowsToExport) {
       const cols = [
@@ -386,6 +402,7 @@
         r.tokens_input == null ? "N/A" : String(r.tokens_input),
         r.tokens_output == null ? "N/A" : String(r.tokens_output),
         formatMoneyPrecise(r.cost_usd),
+        pricingStatus(r),
       ];
       lines.push(cols.map((c) => csvEscape(c, delimiter)).join(delimiter));
     }
@@ -526,14 +543,27 @@
         updatePageSize();
       }, 80);
     };
+    const onShortcutEscape = (event: Event) => {
+      if (exportConfirmOpen) {
+        closeExportConfirm();
+        event.preventDefault();
+        return;
+      }
+      if (clearConfirmOpen) {
+        closeClearConfirm();
+        event.preventDefault();
+      }
+    };
     if (typeof window !== "undefined") {
       window.addEventListener("synapse:global-refresh", onGlobalRefresh);
       window.addEventListener("resize", onResize);
+      window.addEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
     }
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("synapse:global-refresh", onGlobalRefresh);
         window.removeEventListener("resize", onResize);
+        window.removeEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
         if (pageSizeTimer) {
           clearTimeout(pageSizeTimer);
           pageSizeTimer = null;
@@ -600,6 +630,15 @@
     modelOptions={modelIdFilterOptions()}
     bind:totalTokensRange
   />
+
+  {#if hasMissingPricingDisclosure()}
+    <div
+      class="rounded-md border px-3 py-2 text-xs"
+      style="border-color: rgba(245, 158, 11, 0.35); background-color: rgba(245, 158, 11, 0.08); color: #fcd34d;"
+    >
+      Some rows contain token usage but have no cost estimate yet. CSV includes a <span class="font-semibold">Pricing status</span> column for explicit tracking.
+    </div>
+  {/if}
 
   <div class="ui-card overflow-hidden" bind:this={tableWrap}>
     <table class="ui-table text-left text-xs">

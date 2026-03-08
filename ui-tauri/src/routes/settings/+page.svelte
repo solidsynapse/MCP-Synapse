@@ -235,6 +235,19 @@
   }
 
   onMount(() => {
+    const onShortcutEscape = (event: Event) => {
+      if (shortcutsOpen) {
+        closeShortcuts();
+        event.preventDefault();
+        return;
+      }
+      if (resetConfirmOpen) {
+        closeResetConfirm();
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
+
     const cached = uiCacheGet<SettingsState | null>(SETTINGS_CACHE_KEY, SETTINGS_CACHE_TTL_MS);
     let refreshDelayMs = 0;
     if (cached) {
@@ -245,6 +258,7 @@
       void loadState();
     }, refreshDelayMs);
     return () => {
+      window.removeEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
       if (portPersistTimer) {
         clearTimeout(portPersistTimer);
         portPersistTimer = null;

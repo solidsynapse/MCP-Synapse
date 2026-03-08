@@ -177,7 +177,9 @@
 
   function formatMoney(value: number | null) {
     if (value == null || Number.isNaN(value)) return "N/A";
-    return `$${value.toFixed(2)}`;
+    const normalized = Number(value);
+    if (normalized > 0 && normalized < 0.0001) return "<$0.0001";
+    return `$${normalized.toFixed(4)}`;
   }
 
   function formatMoneyPrecise(value: number | null) {

@@ -13,7 +13,11 @@
 
 ## D-001 — SSOT lives in docs/*
 - Date: 2026-02-14
-- Decision: STATUS/PLAN/TASKS/DECISIONS under docs/ are the only source of truth.
+- Decision:
+  - Active SSOT core is limited to: docs/DECISIONS.md, docs/STATUS.md, docs/TASKS.md.
+  - docs/PLAN.md is historical non-binding reference.
+  - docs/UI_STYLE_GUIDE.md is normative for UI behavior/style constraints, but is outside SSOT core gating.
+  - docs/Final_Roadmap/* and docs/roadmap_fizibilite_paketi/* are reference-only unless explicitly promoted by a new decision.
 - Context: Repo has limited docs (only pipeline-v1.md) and needs stabilization checkpoint.
 - Alternatives: Keep decisions in chat / scattered notes.
 - Consequences: Every change must update docs + include verifiable evidence refs.
@@ -73,7 +77,7 @@
      - Else ⇒ legacy default.
      - Invalid / non-integer / out-of-range `MCP_ROUTER_V1_PCT` behaves as “unset” (falls through to legacy default).
   4) Hash algorithm standard: **SHA-256 only** for Stage 1 split decisions.
-  5) Split key (what is hashed): `split_key = agent_id + "\n" + prompt` (prompt-bazlı split bilinçli kabul).
+  5) Split key (what is hashed): `split_key = agent_id + "\n" + prompt` (prompt-based split is an intentional choice).
   6) Deterministic bucket rule:
      - `digest = sha256(split_key).hexdigest()`
      - `bucket = int(digest[:8], 16) % 100`  (0–99)
@@ -94,7 +98,7 @@
   - Global counters / DB-backed rollout (adds state + failure modes).
   - User/account-id based key (not evidenced in SSOT at routing point).
 - Consequences:
-  - Prompt-bazlı split: aynı `agent_id` ile farklı prompt’lar farklı bucket’a düşebilir; bu bilinçli kabul.
+  - Prompt-based split: with the same `agent_id`, different prompts may fall into different buckets; this is intentional.
   - Privacy: prompt text should not be logged; use `prompt_len` + `key_hash_prefix`.
   - Rollback: unset `MCP_ROUTER_USE_V1` and `MCP_ROUTER_V1_PCT` ⇒ legacy default.
 - Evidence:
@@ -136,15 +140,15 @@
   - Note (Phase 1.5, documentation only):
     - Legacy routing path is intentionally retained for rollback.
     - Phase 1.5 scope is limited to proving the ProviderFactory seam in Pipeline V1; no routing redesign.
-  - Pipeline V1 provider seçimi ve client oluşturma tek giriş noktasıdır:
+  - Pipeline V1 provider selection and client creation have a single entrypoint:
     - ProviderAdapterV1 → `ProviderFactory.create(provider_id, context)`
-  - Pipeline V1 içinde doğrudan provider SDK/client inşası yapılmaz (örn. VertexAIClient ctor çağrısı yok).
+  - No direct provider SDK/client construction is allowed inside Pipeline V1 (e.g., no direct VertexAIClient ctor call).
 - Context:
-  - Phase 1.5 “provider-agnostic” iddiasını kilitlemek için seam’in bypass edilmemesi gerekir.
+  - To lock the Phase 1.5 "provider-agnostic" claim, the seam must not be bypassed.
 - Alternatives:
-  - ProviderAdapterV1 içinde provider bazlı `if/elif` ile doğrudan client oluşturmak.
+  - Creating clients directly inside ProviderAdapterV1 with provider-specific `if/elif` branches.
 - Consequences:
-  - Yeni provider eklemek: ProviderClient + ProviderFactory.register ile sınırlı kalır (MCP wiring/UI akışı değişmez).
+  - Adding a new provider remains limited to ProviderClient + ProviderFactory.register (MCP wiring/UI flow remains unchanged).
 - Evidence:
   - docs\evidence\T1.5_hardening_20260217-163300\
 
@@ -155,30 +159,30 @@
 - Date: 2026-02-17
 - Decision:
   - Provider id: `azure_openai`
-  - Agent config alanları (data/config.json agent entry):
-    - `azure_endpoint` (örn: https://{resource}.openai.azure.com)
-    - `azure_api_version` (örn: 2024-02-15-preview)
-    - Deployment adı:
-      - Varsayılan: `model_id` deployment olarak kullanılır
+  - Agent config fields (data/config.json agent entry):
+    - `azure_endpoint` (e.g.: https://{resource}.openai.azure.com)
+    - `azure_api_version` (e.g.: 2024-02-15-preview)
+    - Deployment name:
+      - Default: `model_id` is used as deployment name
       - Override: `deployment_name` (veya `azure_deployment`)
   - Secret (API key) saklama:
     - Raw key config’te tutulmaz.
-    - CredentialManager ile (mevcut semantik: agent_id) alınan değer bir dosya yoludur.
-    - Dosya içeriği UTF-8 okunur ve `strip()` ile API key elde edilir; boşsa hata.
+    - CredentialManager returns a file path value (current semantic: agent_id).
+    - File content is read as UTF-8 and the API key is derived via `strip()`; empty value is an error.
     - (Phase 1.5 constraint) Azure provisioning:
       - UI credential save is NOT used for Azure (CredentialManager.save_credential currently validates GCP JSON).
       - CredentialManager.get_credential(agent_id) MUST return an absolute file path.
       - The Azure provider reads the file as UTF-8, applies strip(); empty => hard error.
       - No silent fallback on missing/invalid path.
   - Streaming:
-    - `stream=True` geldiğinde açık `NotImplementedError` (sessiz davranış değişimi yok).
+    - If `stream=True` is received, raise explicit `NotImplementedError` (no silent behavior change).
 - Context:
-  - Phase 1.5 kapsamında ikinci gerçek provider eklenmesi isteniyor; UI/MCP wiring değiştirilmeden ProviderFactory seam üzerinden eklenmeli.
+  - Phase 1.5 requires adding a second real provider through the ProviderFactory seam without changing UI/MCP wiring.
 - Alternatives:
-  - API key’i config’e koymak (yasak).
-  - Unknown provider_id için sessiz fallback yapmak (yasak).
+  - Storing API key in config (forbidden).
+  - Silent fallback for unknown provider_id (forbidden).
 - Consequences:
-  - Azure OpenAI eklemesi sadece yeni ProviderClient + ProviderFactory kaydı ile sınırlı kalır.
+  - Azure OpenAI addition remains limited to a new ProviderClient + ProviderFactory registration.
 - Evidence:
   - docs\evidence\T1.5_azure_openai_20260217-170200\
 
@@ -755,3 +759,83 @@ P4 UI PREP is ALLOWED when:
   1) Offering paid/free shared access to one provider key across external tenants via this app.
   2) Reselling the app endpoint as a generic hosted proxy service for third parties.
   3) Misrepresenting the app as a compliance substitute for provider-side contractual/regulatory duties.
+
+## D-034 — V1.1 Contingency Lane: Hugging Face OpenAI-Compatible Chat-Only
+
+- Date: 2026-03-06
+- Decision:
+  - D-032 four-provider freeze remains normative for closure (Vertex AI, Azure OpenAI, Bedrock, OpenAI).
+  - If freeze completion is blocked by an external provider dependency (current Bedrock quota/support pending), one contingency lane is authorized: Hugging Face via OpenAI-compatible chat endpoint.
+  - This contingency lane does NOT count as freeze closure evidence and does NOT replace Bedrock in the D-032 acceptance set.
+- Constraints (normative):
+  - HF scope is strictly OpenAI-compatible chat-only (`/v1/chat/completions` contract).
+  - HF Inference API (multi-task), streaming, and broad model-catalog guarantees are out of scope.
+  - Runtime behavior must remain explicit and deterministic (`stream=false`; no silent fallback).
+  - BYOK/local-only and forbidden-use boundaries from D-033 remain fully applicable.
+
+## D-035 — V1.1 Contingency Lane: Ollama Local Chat-Only
+
+- Date: 2026-03-06
+- Decision:
+  - D-032 four-provider freeze remains normative for closure (Vertex AI, Azure OpenAI, Bedrock, OpenAI).
+  - While Bedrock remains an external BLOCKER, one additional contingency lane is authorized: Ollama local chat-only runtime path.
+  - This contingency lane does NOT count as freeze closure evidence and does NOT replace Bedrock in the D-032 acceptance set.
+- Constraints (normative):
+  - Ollama scope is local non-streaming chat/text generation only; no streaming and no silent fallback.
+  - Scope is runtime bridge validation only; it does not alter D-032 freeze acceptance criteria.
+  - BYOK/local-only and forbidden-use boundaries from D-033 remain fully applicable.
+
+## D-036 — Vertex single-targeted preflight probe + performance safety
+
+- Date: 2026-03-07
+- Decision:
+  - Vertex preflight uses a single-targeted live probe for the user-entered model (no catalog scan, no bulk ping).
+  - Probe outcomes must be surfaced with deterministic labels:
+    - `NOT_FOUND_OR_NO_ACCESS (404)`
+    - `PERMISSION (403)`
+    - `QUOTA`
+    - `PROBE_FAILED`
+  - Probe path is optimized to reduce UI lag via bounded execution and caching:
+    - client/auth caching on repeated preflight/edit flows
+    - short bounded probe timeout
+    - minimal probe payload (`hi`, low output budget)
+- Constraints (normative):
+  - No repo-wide provider discovery and no provider scope expansion from this change.
+  - No silent PASS on probe failure; failures must remain explicit in preflight error surface.
+  - Streaming remains out of scope.
+
+## D-037 — Release Versioning Policy (Milestone-Based, pre-1.0)
+
+- Date: 2026-03-07
+- Decision:
+  - Public release line remains pre-1.0 until domain-agnostic execution-fabric target is completed.
+  - Current release lane is `v0.6.x (Early Access)`.
+  - Milestone progression is normative:
+    1) `v0.7.x` -> RC-EXT closure + packaging/install/uninstall readiness
+    2) `v0.8.x` -> provider hardening + security/perf baseline + documentation pack
+    3) `v0.9.x` -> domain-agnostic migration-readiness (plugin/hook contracts + adapter standardization)
+    4) `v1.0.0` -> domain-agnostic execution-fabric completion with stable/performance-ready release criteria
+- Constraints (normative):
+  - Patch bump (`0.6.1` etc.) is hotfix/regression-only.
+  - Minor bump (`0.7.0`, `0.8.0`, `0.9.0`) requires closure evidence for the corresponding milestone package.
+  - UI/About must avoid implying full product completion before `v1.0.0` (use Early Access wording).
+  - Product logo/app icon freeze is tied to packaging/versioning readiness closure (same release asset freeze point).
+
+## D-038 — Licensing & Distribution Policy (Visible-Source Freemium, Official Channel)
+
+- Date: 2026-03-08
+- Decision:
+  - Product licensing/distribution model is visible-source freemium with official-channel control.
+  - First 3-5 months may run unsigned distribution mode, but release integrity controls are mandatory.
+  - Core feature set remains strong free layer in the current lane; monetization is deferred to later Pro layer based on operational depth/collaboration/compliance features.
+- Constraints (normative):
+  - Official distribution channel is single-source and controlled by product owner.
+  - Every public release must include:
+    - tagged release,
+    - SHA256 hashes,
+    - changelog + "what changed" note,
+    - explicit SmartScreen/unsigned warning note while unsigned mode is active.
+  - Security disclosure path must remain explicit (`security@` contact + disclosure policy).
+  - Trademark policy is mandatory before broad public distribution:
+    - forks/re-distributions must not present product name/logo as official.
+  - Code signing is planned for `0.9.x -> 1.0.0` phase; until then, integrity/traceability controls above are non-optional.

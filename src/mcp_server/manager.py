@@ -10,9 +10,12 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import uuid
+from urllib.parse import urlparse
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict
@@ -39,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 class ServerManager:
     _REQUEST_DEDUP_TTL_SECONDS = 20.0
+    _VERTEX_PROBE_CLIENT_TTL_SECONDS = 300.0
+    _VERTEX_PROBE_TIMEOUT_SECONDS = 4.0
 
     def __init__(
         self,
@@ -53,6 +58,9 @@ class ServerManager:
         self._vault = vault or VaultManager()
         self.active_agents: Dict[str, MCPAgentServer] = {}
         self._request_dedup_cache: dict[str, dict[str, object]] = {}
+        self._vertex_probe_client_cache: dict[tuple[str, str, str, str], dict[str, object]] = {}
+        self._vertex_probe_cache_lock = threading.Lock()
+        self._vertex_probe_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="vertex-probe")
 
     @staticmethod
     def _connection_port(connection: dict) -> int | None:
@@ -93,6 +101,80 @@ class ServerManager:
         if len(s) <= limit:
             return s
         return s[-limit:]
+
+    @staticmethod
+    def _canonical_provider(provider_id: str) -> str:
+        raw = str(provider_id or "").strip().lower()
+        if raw == "vertex":
+            return "vertex_ai"
+        return raw or "unknown"
+
+    @staticmethod
+    def _sanitize_error_raw(value: object) -> str:
+        text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+        text = re.sub(r"(?i)bearer\s+[a-z0-9._\-+/=]+", "Bearer [REDACTED]", text)
+        text = re.sub(r"(?i)(api[_\- ]?key|token|secret|authorization)\s*[:=]\s*[^;\s]+", r"\1=[REDACTED]", text)
+        if len(text) > 700:
+            text = text[:700]
+        return text
+
+    @staticmethod
+    def _classify_canonical_error_code(reason: str, provider_id: str, phase: str) -> str:
+        msg = str(reason or "").lower()
+        provider = str(provider_id or "").lower()
+        if "hf_enable_network must be true" in msg or "network gate is disabled" in msg:
+            return "NETWORK_GATE_BLOCKED"
+        if "model not found" in msg or "not found" in msg or "404" in msg:
+            return "MODEL_NOT_FOUND"
+        if provider in {"vertex", "vertex_ai"} and ("permission" in msg or "access denied" in msg):
+            return "MODEL_NOT_FOUND"
+        if phase == "preflight":
+            return "PREFLIGHT_FAILED"
+        return "EXECUTION_FAILED"
+
+    @classmethod
+    def _build_canonical_error(
+        cls,
+        *,
+        phase: str,
+        provider_id: str,
+        model_id: str,
+        request_id: str | None,
+        reason: str,
+        raw: object = "",
+        code: str | None = None,
+    ) -> dict[str, object]:
+        final_reason = str(reason or "").strip() or "request failed"
+        error_code = str(code or "").strip() or cls._classify_canonical_error_code(final_reason, provider_id, phase)
+        envelope: dict[str, object] = {
+            "code": error_code,
+            "provider": cls._canonical_provider(provider_id),
+            "model_id": str(model_id or "").strip() or None,
+            "request_id": str(request_id or "").strip() or None,
+            "reason": final_reason,
+        }
+        sanitized = cls._sanitize_error_raw(raw)
+        if sanitized:
+            envelope["raw"] = sanitized
+        return envelope
+
+    @staticmethod
+    def _validate_http_endpoint(value: str, field_name: str) -> list[str]:
+        errors: list[str] = []
+        endpoint = str(value or "").strip()
+        if not endpoint:
+            return errors
+        if any(ch.isspace() for ch in endpoint):
+            errors.append(f"{field_name} must not contain whitespace")
+            return errors
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in ("http", "https"):
+            errors.append(f"{field_name} must start with http:// or https://")
+            return errors
+        if not parsed.netloc:
+            errors.append(f"{field_name} must be a valid URL with host")
+            return errors
+        return errors
 
     @staticmethod
     def _runtime_proc_alive(pid: int) -> bool:
@@ -367,7 +449,7 @@ class ServerManager:
                 pass
             picked = filedialog.askopenfilename(
                 title="Select credentials file",
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                filetypes=[("All files", "*.*"), ("JSON files", "*.json"), ("Text files", "*.txt")],
             )
             root.destroy()
             return {"ok": True, "errors": [], "warnings": [], "data": {"path": str(picked or "")}}
@@ -912,6 +994,59 @@ class ServerManager:
                         out.append(dict(item))
             return out
 
+        def parse_int_cfg(
+            value: object,
+            fallback: int,
+            *,
+            minimum: int | None = None,
+            maximum: int | None = None,
+        ) -> int:
+            try:
+                parsed = int(value)
+            except Exception:
+                parsed = int(fallback)
+            if minimum is not None and parsed < minimum:
+                parsed = minimum
+            if maximum is not None and parsed > maximum:
+                parsed = maximum
+            return parsed
+
+        def parse_float_cfg(
+            value: object,
+            fallback: float,
+            *,
+            minimum: float | None = None,
+            maximum: float | None = None,
+        ) -> float:
+            try:
+                parsed = float(value)
+            except Exception:
+                parsed = float(fallback)
+            if not math.isfinite(parsed):
+                parsed = float(fallback)
+            if minimum is not None and parsed < minimum:
+                parsed = minimum
+            if maximum is not None and parsed > maximum:
+                parsed = maximum
+            return parsed
+
+        default_health_cfg = base.get("health_alerts_config")
+        base_health_cfg = default_health_cfg if isinstance(default_health_cfg, dict) else {}
+        source_health_cfg = source.get("health_alerts_config")
+        health_cfg_src = source_health_cfg if isinstance(source_health_cfg, dict) else {}
+        health_alerts_config = {
+            "window_rows": parse_int_cfg(health_cfg_src.get("window_rows"), int(base_health_cfg.get("window_rows", 500)), minimum=50, maximum=5000),
+            "min_samples_total": parse_int_cfg(health_cfg_src.get("min_samples_total"), int(base_health_cfg.get("min_samples_total", 20)), minimum=1, maximum=5000),
+            "min_samples_success": parse_int_cfg(health_cfg_src.get("min_samples_success"), int(base_health_cfg.get("min_samples_success", 10)), minimum=1, maximum=5000),
+            "success_rate_warning_pct": parse_float_cfg(health_cfg_src.get("success_rate_warning_pct"), float(base_health_cfg.get("success_rate_warning_pct", 95.0)), minimum=1.0, maximum=100.0),
+            "success_rate_critical_pct": parse_float_cfg(health_cfg_src.get("success_rate_critical_pct"), float(base_health_cfg.get("success_rate_critical_pct", 85.0)), minimum=0.0, maximum=100.0),
+            "latency_warning_ms": parse_int_cfg(health_cfg_src.get("latency_warning_ms"), int(base_health_cfg.get("latency_warning_ms", 8000)), minimum=1, maximum=120000),
+            "latency_critical_ms": parse_int_cfg(health_cfg_src.get("latency_critical_ms"), int(base_health_cfg.get("latency_critical_ms", 15000)), minimum=1, maximum=240000),
+            "budget_warning_pct": parse_float_cfg(health_cfg_src.get("budget_warning_pct"), float(base_health_cfg.get("budget_warning_pct", 75.0)), minimum=1.0, maximum=1000.0),
+            "budget_critical_pct": parse_float_cfg(health_cfg_src.get("budget_critical_pct"), float(base_health_cfg.get("budget_critical_pct", 90.0)), minimum=1.0, maximum=1000.0),
+            "monitor_only": bool(health_cfg_src.get("monitor_only", base_health_cfg.get("monitor_only", True))),
+        }
+
         return {
             "kpis": list_of_dicts(source.get("kpis"), "kpis"),
             "recent_requests": list_of_dicts(source.get("recent_requests"), "recent_requests"),
@@ -919,11 +1054,15 @@ class ServerManager:
             "breakdown_legend": list_of_dicts(source.get("breakdown_legend"), "breakdown_legend"),
             "trend_data": list_of_dicts(source.get("trend_data"), "trend_data"),
             "quick_alerts": list_of_dicts(source.get("quick_alerts"), "quick_alerts"),
+            "health_alerts_config": health_alerts_config,
         }
 
     @staticmethod
     def _format_usd(value: float) -> str:
-        return f"${float(value):,.2f}"
+        normalized = float(value or 0.0)
+        if normalized > 0 and normalized < 0.0001:
+            return "<$0.0001"
+        return f"${normalized:,.4f}"
 
     @staticmethod
     def _matches_utc_day(timestamp_value: object, day_key: str) -> bool:
@@ -952,7 +1091,53 @@ class ServerManager:
         return parsed
 
     def _build_dashboard_live_state(self) -> dict[str, object]:
-        rows = self._usage_db.get_recent_usage(limit=500)
+        dashboard_state_cfg = self._config.get_dashboard_state()
+        dashboard_state_cfg = dashboard_state_cfg if isinstance(dashboard_state_cfg, dict) else {}
+        raw_health_cfg = dashboard_state_cfg.get("health_alerts_config")
+        health_cfg = raw_health_cfg if isinstance(raw_health_cfg, dict) else {}
+
+        def int_cfg(name: str, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+            try:
+                parsed = int(health_cfg.get(name, default))
+            except Exception:
+                parsed = int(default)
+            if minimum is not None and parsed < minimum:
+                parsed = minimum
+            if maximum is not None and parsed > maximum:
+                parsed = maximum
+            return parsed
+
+        def float_cfg(name: str, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
+            try:
+                parsed = float(health_cfg.get(name, default))
+            except Exception:
+                parsed = float(default)
+            if not math.isfinite(parsed):
+                parsed = float(default)
+            if minimum is not None and parsed < minimum:
+                parsed = minimum
+            if maximum is not None and parsed > maximum:
+                parsed = maximum
+            return parsed
+
+        window_rows = int_cfg("window_rows", 500, minimum=50, maximum=5000)
+        min_samples_total = int_cfg("min_samples_total", 20, minimum=1, maximum=5000)
+        min_samples_success = int_cfg("min_samples_success", 10, minimum=1, maximum=5000)
+        success_warn_pct = float_cfg("success_rate_warning_pct", 95.0, minimum=1.0, maximum=100.0)
+        success_critical_pct = float_cfg("success_rate_critical_pct", 85.0, minimum=0.0, maximum=100.0)
+        if success_critical_pct > success_warn_pct:
+            success_critical_pct = success_warn_pct
+        latency_warn_ms = int_cfg("latency_warning_ms", 8000, minimum=1, maximum=120000)
+        latency_critical_ms = int_cfg("latency_critical_ms", 15000, minimum=1, maximum=240000)
+        if latency_critical_ms < latency_warn_ms:
+            latency_critical_ms = latency_warn_ms
+        budget_warn_pct = float_cfg("budget_warning_pct", 75.0, minimum=1.0, maximum=1000.0)
+        budget_critical_pct = float_cfg("budget_critical_pct", 90.0, minimum=1.0, maximum=1000.0)
+        if budget_critical_pct < budget_warn_pct:
+            budget_critical_pct = budget_warn_pct
+        monitor_only = bool(health_cfg.get("monitor_only", True))
+
+        rows = self._usage_db.get_recent_usage(limit=window_rows)
         total_requests = int(len(rows))
         total_cost = float(sum(float(r.get("cost_usd") or 0.0) for r in rows))
         total_tokens = int(
@@ -961,16 +1146,17 @@ class ServerManager:
         success_count = int(sum(1 for r in rows if str(r.get("status") or "") == "success"))
         success_rate = (float(success_count) / float(total_requests) * 100.0) if total_requests > 0 else 0.0
 
-        latency_values: list[int] = []
-        for r in rows:
+        success_rows = [r for r in rows if str(r.get("status") or "") == "success"]
+        success_latency_values: list[int] = []
+        for r in success_rows:
             value = r.get("latency_ms")
             if value is None:
                 continue
             try:
-                latency_values.append(int(value))
+                success_latency_values.append(int(value))
             except Exception:
                 continue
-        avg_latency = int(round(sum(latency_values) / len(latency_values))) if latency_values else 0
+        avg_success_latency = int(round(sum(success_latency_values) / len(success_latency_values))) if success_latency_values else 0
 
         connections = self._config.list_connections()
         active_bridges = int(
@@ -982,13 +1168,15 @@ class ServerManager:
             {"label": "Total Requests", "value": str(total_requests), "icon": "R"},
             {"label": "Total Tokens", "value": str(total_tokens), "icon": "T"},
             {"label": "Success Rate %", "value": f"{success_rate:.1f}%", "icon": "S"},
-            {"label": "Avg Latency ms", "value": f"{avg_latency}ms", "icon": "L"},
+            {"label": "Avg Latency ms", "value": f"{avg_success_latency}ms", "icon": "L"},
             {"label": "Active Bridges count", "value": str(active_bridges), "icon": "B"},
         ]
 
         known_provider_ids = (
             "vertex",
+            "azure_openai",
             "openai",
+            "bedrock",
             "anthropic",
             "groq",
             "lmstudio",
@@ -998,10 +1186,19 @@ class ServerManager:
 
         def provider_label_from_row(row: dict[str, object]) -> str:
             raw = str(row.get("provider") or "").strip().lower()
+            canonical = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
+            aliases = {
+                "azure": "azure_openai",
+                "azure_openai": "azure_openai",
+                "bedrock": "bedrock",
+            }
             if raw:
+                if canonical in aliases:
+                    return aliases[canonical]
                 for provider_id in known_provider_ids:
-                    if raw == provider_id or raw.startswith(provider_id):
+                    if raw == provider_id or raw.startswith(provider_id) or canonical == provider_id:
                         return provider_id
+                return raw
             return "unknown"
 
         recent_requests: list[dict[str, object]] = []
@@ -1118,9 +1315,9 @@ class ServerManager:
             else:
                 continue
             utilization = (consumed / limit) * 100.0
-            if utilization < 75.0:
+            if utilization < budget_warn_pct:
                 continue
-            level = "critical" if utilization >= 90.0 else "warning"
+            level = "critical" if utilization >= budget_critical_pct else "warning"
             scope_label = "All Bridges" if scope_id == "all" else connection_name_by_id.get(scope_id, scope_id)
             text = (
                 f"Budget threshold {'critical' if level == 'critical' else 'warning'}: {scope_label}"
@@ -1131,6 +1328,7 @@ class ServerManager:
                     "level": level,
                     "text": text,
                     "detail": detail,
+                    "monitor_only": monitor_only,
                     "_utilization": utilization,
                 }
             )
@@ -1144,24 +1342,61 @@ class ServerManager:
         for row in budget_alerts:
             row.pop("_utilization", None)
 
-        if total_requests > 0 and success_rate < 95.0:
-            success_level = "critical" if success_rate < 85.0 else "warning"
-            success_target = "85%" if success_level == "critical" else "95%"
+        has_total_sample = total_requests >= min_samples_total
+        has_success_sample = len(success_rows) >= min_samples_success
+        success_alert_level: str | None = None
+        if has_total_sample and success_rate < success_warn_pct:
+            success_level = "critical" if success_rate < success_critical_pct else "warning"
+            success_target = f"{success_critical_pct:.0f}%" if success_level == "critical" else f"{success_warn_pct:.0f}%"
+            success_alert_level = success_level
+            success_detail = f"Current: {success_rate:.1f}%"
+            if success_level == "critical" and has_success_sample and avg_success_latency >= latency_warn_ms:
+                success_detail = f"{success_detail}; Incident context: avg_success_latency={avg_success_latency}ms"
             quick_alerts.append(
                 {
                     "level": success_level,
                     "text": f"Success rate {'critical' if success_level == 'critical' else 'warning'} (<{success_target})",
-                    "detail": f"Current: {success_rate:.1f}%",
+                    "detail": success_detail,
+                    "monitor_only": monitor_only,
                 }
             )
-        if avg_latency > 1000:
-            latency_level = "critical" if avg_latency >= 1800 else "warning"
-            quick_alerts.append({"level": latency_level, "text": f"High average latency: {avg_latency}ms"})
+        if has_total_sample and has_success_sample and avg_success_latency >= latency_warn_ms and success_alert_level != "critical":
+            latency_level = "critical" if avg_success_latency >= latency_critical_ms else "warning"
+            quick_alerts.append(
+                {
+                    "level": latency_level,
+                    "text": f"High average latency (success E2E): {avg_success_latency}ms",
+                    "detail": f"Window={window_rows} rows; samples={len(success_rows)} success",
+                    "monitor_only": monitor_only,
+                }
+            )
+        if not has_total_sample:
+            quick_alerts.append(
+                {
+                    "level": "info",
+                    "text": "Insufficient data for success/latency alerts.",
+                    "detail": f"Need >= {min_samples_total} requests in last {window_rows} rows.",
+                    "monitor_only": monitor_only,
+                }
+            )
+        elif not has_success_sample:
+            quick_alerts.append(
+                {
+                    "level": "info",
+                    "text": "Insufficient successful samples for latency alerts.",
+                    "detail": f"Need >= {min_samples_success} successful requests in last {window_rows} rows.",
+                    "monitor_only": monitor_only,
+                }
+            )
         quick_alerts.extend(budget_alerts)
-        if total_requests == 0:
-            quick_alerts.append({"level": "info", "text": "No usage rows recorded yet."})
         if not quick_alerts:
-            quick_alerts.append({"level": "info", "text": "No active health alerts."})
+            quick_alerts.append(
+                {
+                    "level": "info",
+                    "text": "No active health alerts.",
+                    "monitor_only": monitor_only,
+                }
+            )
 
         return {
             "kpis": kpis,
@@ -1194,6 +1429,13 @@ class ServerManager:
             "trend_data",
             "quick_alerts",
         ]
+        if "health_alerts_config" in state_payload and not isinstance(state_payload.get("health_alerts_config"), dict):
+            return {
+                "ok": False,
+                "errors": ["health_alerts_config must be an object"],
+                "warnings": [],
+                "error_code": "invalid_dashboard_state",
+            }
         for key in expected_list_keys:
             if key in state_payload and not isinstance(state_payload.get(key), list):
                 return {
@@ -1394,6 +1636,111 @@ class ServerManager:
         except Exception:
             return "", ["vault credentials resolution failed"]
 
+    @staticmethod
+    def _classify_vertex_probe_error(message: str) -> str:
+        text = str(message or "").lower()
+        if "404" in text or "not found" in text or "does not have access" in text:
+            return "NOT_FOUND_OR_NO_ACCESS (404)"
+        if "403" in text or "permission" in text or "forbidden" in text or "unauthorized" in text:
+            return "PERMISSION (403)"
+        if "quota" in text or "rate limit" in text or "resource exhausted" in text:
+            return "QUOTA"
+        return "PROBE_FAILED"
+
+    def _get_cached_vertex_probe_client(
+        self,
+        *,
+        project_id: str,
+        location: str,
+        model_id: str,
+        credentials_path: str,
+    ):
+        key = (
+            str(project_id).strip(),
+            str(location).strip(),
+            str(model_id).strip(),
+            str(credentials_path).strip(),
+        )
+        now = time.monotonic()
+        with self._vertex_probe_cache_lock:
+            cached = self._vertex_probe_client_cache.get(key)
+            if cached:
+                age = now - float(cached.get("ts") or 0.0)
+                if age <= self._VERTEX_PROBE_CLIENT_TTL_SECONDS:
+                    return cached.get("client")
+        probe_agent = {
+            "id": "preflight-probe",
+            "name": "PreflightProbe",
+            "provider_id": "vertex",
+            "project_id": str(project_id),
+            "location": str(location),
+            "model_id": str(model_id),
+            "price_per_1m_input": 0.0,
+            "price_per_1m_output": 0.0,
+        }
+        context = ExecutionContextV1(
+            agent=probe_agent,
+            project_id=str(project_id),
+            location=str(location),
+            provider_id="vertex",
+            model_id=str(model_id),
+            credentials_path=str(credentials_path),
+            price_per_1m_input=0.0,
+            price_per_1m_output=0.0,
+            streaming=False,
+        )
+        client = ProviderFactory.create("vertex", context)
+        with self._vertex_probe_cache_lock:
+            self._vertex_probe_client_cache[key] = {"ts": now, "client": client}
+        return client
+
+    def _run_vertex_preflight_probe_sync(
+        self,
+        *,
+        project_id: str,
+        location: str,
+        model_id: str,
+        credentials_path: str,
+    ) -> tuple[bool, str]:
+        try:
+            client = self._get_cached_vertex_probe_client(
+                project_id=project_id,
+                location=location,
+                model_id=model_id,
+                credentials_path=credentials_path,
+            )
+            # Minimal targeted probe (short prompt + low output budget).
+            client.generate_content("hi", stream=False, max_output_tokens=8)
+            return True, ""
+        except Exception as exc:
+            raw = self._tail_text(str(exc), limit=700)
+            label = self._classify_vertex_probe_error(raw)
+            return False, f"{label}: {raw}"
+
+    def _run_vertex_preflight_probe(
+        self,
+        *,
+        project_id: str,
+        location: str,
+        model_id: str,
+        credentials_path: str,
+    ) -> tuple[bool, str]:
+        future = self._vertex_probe_executor.submit(
+            self._run_vertex_preflight_probe_sync,
+            project_id=project_id,
+            location=location,
+            model_id=model_id,
+            credentials_path=credentials_path,
+        )
+        try:
+            return future.result(timeout=self._VERTEX_PROBE_TIMEOUT_SECONDS)
+        except FutureTimeoutError:
+            future.cancel()
+            return False, "PROBE_FAILED: probe timeout while checking model access"
+        except Exception as exc:
+            raw = self._tail_text(str(exc), limit=700)
+            return False, f"PROBE_FAILED: {raw}"
+
     def _build_connection_schema_hint(self, provider_id: str) -> dict[str, object]:
         provider = str(provider_id or "").strip()
         fields: list[dict[str, object]] = [
@@ -1464,6 +1811,23 @@ class ServerManager:
                 },
             )
             suggested_defaults["location"] = "us-central1"
+
+        if provider == "ollama":
+            for f in fields:
+                if not isinstance(f, dict):
+                    continue
+                field_id = str(f.get("id") or "").strip()
+                if field_id == "model_id":
+                    f["placeholder"] = "Example: gemma3:1b"
+                    f["help"] = "Ollama local model tag (required)."
+                elif field_id == "endpoint":
+                    f["required"] = True
+                    f["placeholder"] = "http://127.0.0.1:11434"
+                    f["help"] = "Ollama base URL for local runtime."
+                elif field_id == "credentials_path":
+                    f["help"] = "Not required for local Ollama runtime."
+            suggested_defaults["endpoint"] = "http://127.0.0.1:11434"
+            notes.append("Ollama local default endpoint is http://127.0.0.1:11434.")
 
         if provider == "bedrock":
             for f in fields:
@@ -1547,6 +1911,87 @@ class ServerManager:
             suggested_defaults["aws_region"] = "us-east-1"
             suggested_defaults["credential_source"] = "file"
 
+        if provider == "azure_openai":
+            fields = [
+                f
+                for f in fields
+                if not (
+                    isinstance(f, dict)
+                    and str(f.get("id") or "").strip() == "endpoint"
+                )
+            ]
+            for f in fields:
+                if not isinstance(f, dict):
+                    continue
+                field_id = str(f.get("id") or "").strip()
+                if field_id == "model_id":
+                    f["label"] = "Deployment name"
+                    f["placeholder"] = "Example: gpt-4o-mini-deploy"
+                    f["help"] = "Azure uses deployment name instead of raw model ID."
+                elif field_id == "credentials_path":
+                    f["required"] = True
+                    f["placeholder"] = r"C:\path\to\azure_api_key.txt"
+                    f["help"] = "Path to a local file that contains your Azure OpenAI API key."
+            fields.insert(
+                2,
+                {
+                    "id": "azure_endpoint",
+                    "label": "Endpoint / Base URL",
+                    "required": True,
+                    "kind": "text",
+                    "placeholder": "https://<resource>.openai.azure.com",
+                    "help": "Azure OpenAI resource endpoint (required).",
+                    "section": "common",
+                },
+            )
+            fields.insert(
+                3,
+                {
+                    "id": "azure_api_version",
+                    "label": "API version",
+                    "required": True,
+                    "kind": "text",
+                    "placeholder": "Example: 2024-10-21",
+                    "help": "Required Azure OpenAI API version.",
+                    "section": "common",
+                },
+            )
+            suggested_defaults["azure_api_version"] = "2024-10-21"
+            notes.append("Azure OpenAI uses deployment name (not raw model name).")
+
+        if provider == "huggingface":
+            for f in fields:
+                if not isinstance(f, dict):
+                    continue
+                field_id = str(f.get("id") or "").strip()
+                if field_id == "endpoint":
+                    f["required"] = False
+                    f["placeholder"] = "https://router.huggingface.co/v1"
+                    f["help"] = "HF OpenAI-compatible base URL. Leave blank to use default."
+                elif field_id == "credentials_path":
+                    f["required"] = True
+                    f["placeholder"] = r"C:\path\to\hf_token.txt"
+                    f["help"] = "Path to a local file (or vault:// reference) that contains your HF access token."
+            fields.insert(
+                3,
+                {
+                    "id": "hf_enable_network",
+                    "label": "Enable HF network calls",
+                    "required": True,
+                    "kind": "select",
+                    "options": [
+                        {"value": "false", "label": "Disabled (default)"},
+                        {"value": "true", "label": "Enabled"},
+                    ],
+                    "placeholder": "false",
+                    "help": "Safety rail: set Enabled to allow live Hugging Face outbound calls.",
+                    "section": "advanced",
+                },
+            )
+            suggested_defaults["endpoint"] = "https://router.huggingface.co/v1"
+            suggested_defaults["hf_enable_network"] = "false"
+            notes.append("Current HF scope is OpenAI-compatible chat only (non-streaming).")
+
         if not provider:
             notes.append("Select a provider to see core-driven field requirements.")
 
@@ -1565,13 +2010,14 @@ class ServerManager:
     def preflight_connection(self, payload: dict) -> dict[str, object]:
         errors: list[str] = []
         warnings: list[str] = []
+        probe: dict[str, object] | None = None
         connection_name = str(payload.get("connection_name") or "").strip()
         provider_id = str(payload.get("provider_id") or "").strip()
-        model_id = str(payload.get("model_id") or "").strip()
-        endpoint_provided = "endpoint" in payload
+        model_id = str(payload.get("model_id") or payload.get("deployment_name") or "").strip()
         credentials_provided = "credentials_path" in payload
         endpoint = str(payload.get("endpoint") or "").strip()
         credentials_path = str(payload.get("credentials_path") or "").strip()
+        resolved_credentials_path = ""
 
         if not connection_name:
             errors.append("connection_name is required")
@@ -1592,7 +2038,10 @@ class ServerManager:
                     continue
                 if field_id in ("connection_name", "model_id"):
                     continue
-                value = str(payload.get(field_id) or "").strip()
+                if provider_id == "ollama" and field_id == "endpoint":
+                    value = str(payload.get("endpoint") or payload.get("ollama_base_url") or "").strip()
+                else:
+                    value = str(payload.get(field_id) or "").strip()
                 if not value:
                     errors.append(f"{field_id} is required")
 
@@ -1626,19 +2075,50 @@ class ServerManager:
                 bedrock_api_key = str(payload.get("bedrock_api_key") or "").strip()
                 if not bedrock_api_key:
                     errors.append("bedrock_api_key is required when credential_source=api_key")
+        elif provider_id == "azure_openai":
+            azure_endpoint = str(payload.get("azure_endpoint") or endpoint).strip()
+            azure_api_version = str(payload.get("azure_api_version") or "").strip()
+            deployment_name = str(payload.get("deployment_name") or model_id).strip()
+            if not azure_endpoint:
+                errors.append("azure_endpoint is required")
+            else:
+                errors.extend(self._validate_http_endpoint(azure_endpoint, "azure_endpoint"))
+            if not azure_api_version:
+                errors.append("azure_api_version is required")
+            if not deployment_name:
+                errors.append("deployment_name is required")
+            if not credentials_path:
+                errors.append("credentials_path is required for azure_openai")
+        elif provider_id == "ollama":
+            ollama_base_url = str(payload.get("ollama_base_url") or endpoint).strip()
+            if not ollama_base_url:
+                errors.append("endpoint is required for ollama")
+            elif re.match(r"^https?://(?:127\.0\.0\.1|localhost):\d+/sse$", ollama_base_url):
+                errors.append("endpoint must be Ollama base URL, not local bridge /sse endpoint")
+            else:
+                errors.extend(self._validate_http_endpoint(ollama_base_url, "endpoint"))
+        elif provider_id == "huggingface":
+            hf_endpoint = str(payload.get("hf_endpoint") or endpoint).strip()
+            if hf_endpoint:
+                errors.extend(self._validate_http_endpoint(hf_endpoint, "hf_endpoint"))
+            hf_enable_raw = payload.get("hf_enable_network")
+            if isinstance(hf_enable_raw, bool):
+                hf_enable_text = "true" if hf_enable_raw else "false"
+            else:
+                hf_enable_text = str(hf_enable_raw or "").strip().lower()
+            allowed_values = {"true", "false", "1", "0", "yes", "no", "on", "off"}
+            if hf_enable_text and hf_enable_text not in allowed_values:
+                errors.append("hf_enable_network must be one of: true, false")
+            hf_enabled = hf_enable_text in {"true", "1", "yes", "on"}
+            if not hf_enabled:
+                errors.append("hf_enable_network must be true for live calls")
 
-        if endpoint_provided and not endpoint:
-            errors.append("endpoint must be non-empty if provided")
         if endpoint:
-            if any(ch.isspace() for ch in endpoint):
-                errors.append("endpoint must not contain whitespace")
-            if endpoint in ("http://", "https://"):
-                errors.append("endpoint must include a host")
-            if "://" not in endpoint:
-                placeholder_tokens = ("example", "placeholder", "your_", "your-", "changeme", "todo")
-                lower = endpoint.lower()
-                if any(token in lower for token in placeholder_tokens):
-                    warnings.append("endpoint appears to be a placeholder")
+            errors.extend(self._validate_http_endpoint(endpoint, "endpoint"))
+            placeholder_tokens = ("example", "placeholder", "your_", "your-", "changeme", "todo")
+            lower = endpoint.lower()
+            if any(token in lower for token in placeholder_tokens):
+                warnings.append("endpoint appears to be a placeholder")
 
         if credentials_provided and not credentials_path and not (
             provider_id == "bedrock"
@@ -1649,11 +2129,13 @@ class ServerManager:
             provider_id == "bedrock"
             and str(payload.get("credential_source") or "file").strip().lower() in ("manual", "api_key")
         ):
-            resolved_credentials_path, resolve_errors = self._resolve_credentials_path(credentials_path)
+            resolved_candidate, resolve_errors = self._resolve_credentials_path(credentials_path)
             if resolve_errors:
                 errors.extend(resolve_errors)
-            elif not resolved_credentials_path or not Path(resolved_credentials_path).exists():
+            elif not resolved_candidate or not Path(resolved_candidate).exists():
                 errors.append("credentials_path does not exist")
+            else:
+                resolved_credentials_path = resolved_candidate
 
         normalized_payload: dict[str, str] = {
             "connection_name": connection_name,
@@ -1706,13 +2188,71 @@ class ServerManager:
                 normalized_payload.pop("aws_secret_access_key", None)
                 normalized_payload.pop("aws_session_token", None)
                 normalized_payload.pop("bedrock_api_key", None)
+        elif provider_id == "azure_openai":
+            azure_endpoint = str(payload.get("azure_endpoint") or endpoint).strip()
+            azure_api_version = str(payload.get("azure_api_version") or "").strip()
+            deployment_name = str(payload.get("deployment_name") or model_id).strip()
+            normalized_payload.pop("endpoint", None)
+            if azure_endpoint:
+                normalized_payload["azure_endpoint"] = azure_endpoint
+            if azure_api_version:
+                normalized_payload["azure_api_version"] = azure_api_version
+            if deployment_name:
+                normalized_payload["deployment_name"] = deployment_name
+        elif provider_id == "ollama":
+            ollama_base_url = str(payload.get("ollama_base_url") or endpoint).strip()
+            normalized_payload.pop("endpoint", None)
+            if ollama_base_url:
+                normalized_payload["ollama_base_url"] = ollama_base_url
+        elif provider_id == "huggingface":
+            hf_endpoint = str(payload.get("hf_endpoint") or endpoint).strip()
+            normalized_payload.pop("endpoint", None)
+            if hf_endpoint:
+                normalized_payload["hf_endpoint"] = hf_endpoint
 
-        return {
+        if provider_id == "vertex" and not errors:
+            project_id = str(payload.get("project_id") or "").strip()
+            location = str(payload.get("location") or "us-central1").strip() or "us-central1"
+            probe_path = resolved_credentials_path or credentials_path
+            probe_ok, probe_error = self._run_vertex_preflight_probe(
+                project_id=project_id,
+                location=location,
+                model_id=model_id,
+                credentials_path=probe_path,
+            )
+            probe = {
+                "provider_id": "vertex",
+                "status": "ok" if probe_ok else "error",
+            }
+            if probe_error:
+                probe["message"] = probe_error
+            if not probe_ok:
+                errors.append(probe_error)
+
+        canonical_error = None
+        if errors:
+            joined_errors = "; ".join([str(e) for e in errors])
+            reason = str(errors[0])
+            if "hf_enable_network must be true for live calls" in joined_errors:
+                reason = "hf_enable_network must be true for live calls"
+            canonical_error = self._build_canonical_error(
+                phase="preflight",
+                provider_id=provider_id,
+                model_id=model_id,
+                request_id=None,
+                reason=reason,
+                raw=joined_errors,
+            )
+        result: dict[str, object] = {
             "ok": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
             "normalized_payload": normalized_payload,
+            "canonical_error": canonical_error,
         }
+        if probe is not None:
+            result["probe"] = probe
+        return result
 
     def create_connection(self, payload: dict) -> dict[str, object]:
         preflight = self.preflight_connection(payload)
@@ -1722,6 +2262,7 @@ class ServerManager:
                 "errors": preflight.get("errors", []),
                 "warnings": preflight.get("warnings", []),
                 "normalized_payload": preflight.get("normalized_payload"),
+                "canonical_error": preflight.get("canonical_error"),
                 "connections": self._config.list_connections(),
             }
 
@@ -1806,6 +2347,7 @@ class ServerManager:
                 "errors": preflight.get("errors", []),
                 "warnings": preflight.get("warnings", []),
                 "normalized_payload": preflight.get("normalized_payload"),
+                "canonical_error": preflight.get("canonical_error"),
                 "connections": self._config.list_connections(),
             }
 
@@ -2388,6 +2930,7 @@ class ServerManager:
         preflight_ok = bool(preflight.get("ok"))
         preflight_errors = list(preflight.get("errors") or [])
         preflight_warnings = list(preflight.get("warnings") or [])
+        canonical_error = preflight.get("canonical_error")
 
         copy_result = self.copy_connection_config({"connection_id": connection_id})
         if not copy_result.get("ok"):
@@ -2424,6 +2967,7 @@ class ServerManager:
             "errors": preflight_errors,
             "warnings": preflight_warnings,
             "dry_run_trace": trace,
+            "canonical_error": canonical_error,
         }
 
     def test_agent_connection(self, agent_id: str) -> str:
@@ -2519,6 +3063,20 @@ class ServerManager:
         try:
             result = provider.execute(routed_context, prompt)
         except Exception as exc:
+            canonical_error = getattr(exc, "canonical_error", None)
+            if not isinstance(canonical_error, dict):
+                canonical_error = self._build_canonical_error(
+                    phase="runtime",
+                    provider_id=str(getattr(exc, "provider", routed_context.provider_id) or ""),
+                    model_id=str(getattr(exc, "model_id", routed_context.model_id) or ""),
+                    request_id=str(getattr(exc, "request_id", "") or "") or None,
+                    reason=str(exc),
+                    raw=exc,
+                )
+                try:
+                    setattr(exc, "canonical_error", canonical_error)
+                except Exception:
+                    pass
             error_result: dict[str, object] = {
                 "text": "",
                 "tokens_input": 0,
@@ -2530,6 +3088,7 @@ class ServerManager:
                 "request_id": getattr(exc, "request_id", None),
                 "provider": getattr(exc, "provider", None),
                 "model_id": getattr(exc, "model_id", routed_context.model_id),
+                "error": canonical_error,
             }
             observer.observe(self._usage_db, routed_context, error_result)
             raise
@@ -2754,6 +3313,20 @@ class ServerManager:
                     request_id=str(result.get("request_id") or ""),
                 )
         except Exception as exc:
+            canonical_error = getattr(exc, "canonical_error", None)
+            if not isinstance(canonical_error, dict):
+                canonical_error = self._build_canonical_error(
+                    phase="runtime",
+                    provider_id=str(getattr(exc, "provider", provider_id) or ""),
+                    model_id=str(getattr(exc, "model_id", model_id) or ""),
+                    request_id=str(getattr(exc, "request_id", "") or "") or None,
+                    reason=str(exc),
+                    raw=exc,
+                )
+                try:
+                    setattr(exc, "canonical_error", canonical_error)
+                except Exception:
+                    pass
             error_result: dict[str, object] = {
                 "text": "",
                 "tokens_input": 0,
@@ -2767,6 +3340,7 @@ class ServerManager:
                 "model_id": getattr(exc, "model_id", model_id),
                 "request_dedup_enabled": request_dedup_enabled,
                 "request_dedup_hit": False,
+                "error": canonical_error,
             }
             observer.observe(self._usage_db, routed_context, error_result)
             raise

@@ -1,5 +1,7 @@
 <script lang="ts">
   import "../app.css";
+  import ShortcutsModal from "$lib/components/ShortcutsModal.svelte";
+  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
 
@@ -110,6 +112,7 @@
 
   let lastRefresh = $state(formatTime(new Date()));
   let refreshBusy = $state(false);
+  let shortcutsOpen = $state(false);
 
   function triggerRefresh() {
     refreshBusy = true;
@@ -120,6 +123,21 @@
         refreshBusy = false;
       }, 900);
     }
+  }
+
+  function openShortcuts() {
+    shortcutsOpen = true;
+  }
+
+  function closeShortcuts() {
+    shortcutsOpen = false;
+  }
+
+  function isEditableTarget(target: EventTarget | null): boolean {
+    const el = target instanceof HTMLElement ? target : null;
+    if (!el) return false;
+    if (el.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], [contenteditable]")) return true;
+    return false;
   }
 
   onMount(() => {
@@ -134,10 +152,87 @@
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      const details = getHelpDetails();
-      if (!details?.open) return;
-      details.open = false;
+      const key = String(event.key || "");
+      const lower = key.toLowerCase();
+      const mod = event.ctrlKey || event.metaKey;
+      const typing = isEditableTarget(event.target);
+      const currentPath = String(pathname || "");
+
+      if (key === "Escape") {
+        if (shortcutsOpen) {
+          event.preventDefault();
+          closeShortcuts();
+          return;
+        }
+        const escapeEvent = new CustomEvent("synapse:shortcut-escape", { cancelable: true });
+        window.dispatchEvent(escapeEvent);
+        if (escapeEvent.defaultPrevented) {
+          event.preventDefault();
+          return;
+        }
+        const details = getHelpDetails();
+        if (!details?.open) return;
+        event.preventDefault();
+        details.open = false;
+        return;
+      }
+
+      if (mod && key === "/") {
+        event.preventDefault();
+        openShortcuts();
+        return;
+      }
+
+      if (mod && lower === "r" && !typing) {
+        event.preventDefault();
+        triggerRefresh();
+        return;
+      }
+
+      if (event.altKey && !mod && !typing) {
+        if (lower === "d") {
+          event.preventDefault();
+          void goto("/dashboard");
+          return;
+        }
+        if (lower === "c") {
+          event.preventDefault();
+          void goto("/connections");
+          return;
+        }
+        if (lower === "u") {
+          event.preventDefault();
+          void goto("/usage/summary");
+          return;
+        }
+        if (lower === "p") {
+          event.preventDefault();
+          void goto("/policies/persona");
+          return;
+        }
+        if (lower === "b") {
+          event.preventDefault();
+          void goto("/resilience/budget");
+          return;
+        }
+      }
+
+      if (mod && lower === "n" && !typing && currentPath.startsWith("/connections")) {
+        const newConnectionEvent = new CustomEvent("synapse:shortcut-new-connection", { cancelable: true });
+        window.dispatchEvent(newConnectionEvent);
+        if (newConnectionEvent.defaultPrevented) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (mod && key === "Enter") {
+        const primaryActionEvent = new CustomEvent("synapse:shortcut-primary-action", { cancelable: true });
+        window.dispatchEvent(primaryActionEvent);
+        if (primaryActionEvent.defaultPrevented) {
+          event.preventDefault();
+        }
+      }
     };
 
     window.addEventListener("pointerdown", onPointerDown, true);
@@ -432,6 +527,7 @@
     <div>Last refresh: {lastRefresh}</div>
   </footer>
 </div>
+<ShortcutsModal open={shortcutsOpen} onClose={closeShortcuts} />
 
 <style>
   .sidebar-collapsed .collapsed-nav-item:focus-visible {

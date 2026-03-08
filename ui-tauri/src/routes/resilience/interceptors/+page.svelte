@@ -215,6 +215,13 @@
   }
 
   onMount(() => {
+    const onShortcutEscape = (event: Event) => {
+      if (!configOpen) return;
+      closeConfig();
+      event.preventDefault();
+    };
+    window.addEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
+
     const cached = uiCacheGet<InterceptorsState | null>(INTERCEPTORS_CACHE_KEY, INTERCEPTORS_CACHE_TTL_MS);
     let refreshDelayMs = 0;
     if (cached) applyHydratedState(cached);
@@ -223,6 +230,7 @@
       void loadState();
     }, refreshDelayMs);
     return () => {
+      window.removeEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
       if (bannerTimer) {
         clearTimeout(bannerTimer);
         bannerTimer = null;

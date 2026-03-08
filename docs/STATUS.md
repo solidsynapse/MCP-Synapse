@@ -5,10 +5,10 @@
 - Date: 2026-02-14
 - OS: Windows 10 LTSC
 - Repo root: C:\MCP-ROUTER
-- VCS: Git mevcut, repo git init edilmemiş (kanıt: Step-1 output)
+- VCS: Git is available, repo is not git-initialized (evidence: Step-1 output)
 - Docs present: docs/architecture/pipeline-v1.md
-- Legacy path: aktif (kanıt bekleniyor)
-- Pipeline V1: implementasyon mevcut, default değil (kanıt: docs/architecture/pipeline-v1.md + src path list)
+- Legacy path: active (evidence pending)
+- Pipeline V1: implementation exists, not default (evidence: docs/architecture/pipeline-v1.md + src path list)
 - Phase 2 / D-004 verification: **DONE** (Evidence root: docs\evidence\D004_verify_20260219-050337\)
 - Current phase: P5 post-closure stabilization (P5.13 closure PASS; PRS manual live sweep NARROW fix queue F-PRS-01..08 active).
 - Budget guard policy: monitor-only lock active; optional enforcement toggle deferred by D-031 pending dedicated future package + SSOT FLIP.
@@ -72,8 +72,14 @@ docs\evidence\P5_9_RUNTIME_ENCODING_CLOSURE_AUDIT_20260227-124419
   - V1.0 GATE-V10-DATA-SAFETY PASS (usage.clear reconfirmed with deterministic backup/restore probe; export behavior remains covered by latest live UI smoke and P5.14F export runtime evidence): docs\evidence\V10_GATE_DATA_SAFETY_20260304-20260304-091329; docs\evidence\V10_GATE_UI_SMOKE_20260304-20260304-090444; docs\evidence\P5_14F_EXPORT_SLICE_20260302-024711
   - V1.0 GATE-V10-DOCS-LEGAL PASS (LC-MIN security/support/legal/product/general contact map finalized; comprehensive legal/compliance pack and official EU/provider source register remain aligned with current truth): docs\evidence\V10_GATE_DOCS_LEGAL_20260304-093733; docs\evidence\V10_GATE_DOCS_LEGAL_PASS_20260304-214636
   - V1.0 GATE-V10-RC-READINESS PASS (RC checklist completed with checkpoint references + known issues coverage + support boundaries/contact map): docs\evidence\V10_GATE_RC_READINESS_20260304-223507
-  - V1.1 Provider Freeze progress (order: Vertex -> OpenAI -> Bedrock -> Azure OpenAI): Vertex AI PASS (live reconfirm), OpenAI PASS (live create/update/preflight/runtime + usage identity), Bedrock BLOCKER (connection/auth + invocation path PASS but usable live generation blocked by account quota + current adapter model allowlist constraints), Azure OpenAI OPEN: docs\evidence\V11_PROVIDER_VERTEX_20260305-001159; docs\evidence\V11_PROVIDER_OPENAI_20260305-001159; docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128; docs\evidence\Bedrock_Real_Tests\Bedrock_Live_Tests_Results_Evalution.md; docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619; docs\evidence\V11_BEDROCK_APIKEY_MODE_20260305-085503
-  - Carry-forward (non-blocking for freeze gate): Usage Summary KPI cards currently stay global under active filters while table/export filters behave correctly; keep as post-freeze UI consistency polish.
+  - V1.1 Provider Freeze progress (order: Vertex -> OpenAI -> Bedrock -> Azure OpenAI): Vertex AI PASS (live reconfirm; preflight probe upgraded to single-targeted classification + performance-safe execution), OpenAI PASS (live create/update/preflight/runtime + usage identity), Bedrock BLOCKER (connection/auth + invocation path PASS but usable live generation blocked by account quota + current adapter model allowlist constraints), Azure OpenAI PASS (live connection/create/preflight/update/runtime smoke + dashboard/usage visibility + modal contract lock + targeted hotfix closure): docs\evidence\V11_PROVIDER_VERTEX_20260305-001159; docs\evidence\VERTEX_PREFLIGHT_SINGLE_PROBE_20260307-005435; docs\evidence\VERTEX_PREFLIGHT_PERF_HOTFIX_20260307-011139; docs\evidence\VERTEX_PROBE_CLASSIFIER_HOTFIX_20260307-012751; docs\evidence\VERTEX_PREFLIGHT_EMPTY_TEXT_HOTFIX_20260307-013304; docs\evidence\V11_PROVIDER_OPENAI_20260305-001159; docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128; docs\evidence\Bedrock_Real_Tests\Bedrock_Live_Tests_Results_Evalution.md; docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619; docs\evidence\V11_BEDROCK_APIKEY_MODE_20260305-085503; docs\evidence\Azure_real_tests\Azure OpenAI entegrasyonu.md; docs\evidence\V11_AZURE_MODAL_CONTRACT_PATCH_20260305-223056; docs\evidence\HOTFIX_AZURE_DASH_VAULT_20260306-012035
+  - V1.1 contingency lane status (D-034/D-035): Hugging Face OpenAI-compatible chat-only PASS (network gate explicit enable + preflight enforcement + non-streaming `/v1/chat/completions` + IDE smoke + usage provider/model identity + vault credential source), Ollama local chat-only PASS (endpoint contract/hydration + create/update/preflight/runtime smoke + usage provider/model identity). These remain non-closure lanes; D-032 freeze closure is still blocked by Bedrock external dependency: docs\evidence\HF_MODAL_CONTRACT_TEXT_SYNC_20260306-054615; docs\evidence\HF_NETWORK_GATE_UI_PREFLIGHT_FIX_20260306-060946; docs\evidence\OLLAMA_ENDPOINT_HYDRATE_HOTFIX_20260306-052107; docs\evidence\OLLAMA_PREFLIGHT_REQUIRED_FIX_20260306-053551; docs\evidence\SSOT_SYNC_HF_CONTINGENCY_20260306-072439
+  - V1.1 LLM Lite Cost Gate progress: A1 kickoff matrix prepared; A2 pricing disclosure + CSV `Pricing status` PASS; A3 dashboard disclosure dismiss + overflow-compact polish PASS; A5 priced-lane deterministic compute PASS (OpenAI live request chain shows non-zero USD with cross-surface consistency + CSV `Estimated`); A6 Vertex live explicit unknown-pricing path PASS (`cost=$0.0000` + `Pricing status=Missing pricing data` with cross-surface parity); A7 Azure live known-pricing path PASS (`cost_usd>0` + `Pricing status=Estimated` with same-request cross-surface parity); A8 Vertex live known-pricing path PASS (`cost_usd>0` + `Pricing status=Estimated` with same-request parity across payload/DB/UI/CSV); A9 closure bundle PASS (A7+A8 live artifacts consolidated under one gate-level reconfirm package); A10 release-cut reconciliation PASS (no-code SSOT/evidence reconciliation confirms Usage/Budget rails closure boundary while Bedrock remains external): docs\evidence\V11_LLM_COST_GATE_A1_KICKOFF_20260307-020000; docs\evidence\V11_LLM_COST_GATE_A2_PRICING_DISCLOSURE_20260307-023238; docs\evidence\V11_LLM_COST_GATE_A3_DASHBOARD_DISCLOSURE_SCROLLFIX_20260307-024406; docs\evidence\V11_LLM_COST_GATE_A5_20260307-030532; docs\evidence\V11_LLM_COST_GATE_A5_PASS_SYNC_20260307-033321; docs\evidence\V11_LLM_COST_GATE_A6_20260307-034036; docs\evidence\V11_LLM_COST_GATE_A6_PASS_SYNC_20260307-065351; docs\evidence\V11_LLM_COST_GATE_A7_20260307-065850; docs\evidence\V11_LLM_COST_GATE_A7_PASS_SYNC_20260307-070531; docs\evidence\V11_LLM_COST_GATE_A8_20260307-071112; docs\evidence\V11_LLM_COST_GATE_A8_PASS_SYNC_20260307-073958; docs\evidence\V11_LLM_COST_GATE_A9_CLOSURE_BUNDLE_20260307-074738; docs\evidence\V11_LLM_COST_GATE_A10_RELEASE_RECONCILE_20260307-075241
+  - Remaining open set (post-A10 reconciliation): Bedrock provider allowlist/quota stays external BLOCKER; network gate matrix (VertexAI/OpenAI/Azure/Ollama/HF) + persona enforcement + copy-config regression + Usage/Budget rails (V1.1 LLM cost gate) are treated as PASS on current evidence; RC-EXT final release hygiene pack is OPEN (health alerts calibration, shortcuts baseline with current-surface scope, security hygiene, debuggability minimum, packaging/versioning readiness). Usage History "View Details" modal is not a current surface and is tracked as future enhancement.
+  - First release scope lock (current truth): Bedrock is blocked and de-scoped/hidden from first-release surface until quota/allowlist unblock. Re-enable path is fixed and narrow: unhide provider in UI -> run provider regression smoke -> reconfirm usage/dashboard parity.
+  - Carry-forward (non-blocking for current gate): Usage Summary KPI cards currently stay global under active filters while table/export filters behave correctly; disclosure parity (Summary) + residual right-edge scrollbar polish deferred to final release UI pass; post-RC P1 perf smoke remains deferred; full English documentation pack is deferred until technical freeze is completed (technical-first sequencing lock).
+  - Versioning policy lock (D-037): current line is `v0.6.x (Early Access)`; milestone progression is `0.7` (RC-EXT + packaging), `0.8` (hardening/security+perf baseline/docs), `0.9` (domain-agnostic migration-readiness), `1.0` (domain-agnostic execution-fabric completion). Logo/app icon freeze remains coupled to packaging/versioning closure.
+  - Licensing/distribution lock (D-038): visible-source freemium + official-channel control is active; unsigned release mode is allowed only as a temporary phase with mandatory release integrity set (tag + SHA256 + changelog/"what changed" + explicit unsigned warning). Code signing is scheduled for `0.9.x -> 1.0.0`.
 - Usage DB: data/usage.db + src/data/usage_db.py
 - Config: data/config.json + src/config/manager.py
 - Provider integration: src/vertex/client.py (uses Google Vertex AI)
@@ -98,7 +104,7 @@ docs\evidence\P5_9_RUNTIME_ENCODING_CLOSURE_AUDIT_20260227-124419
 
 ## Stabilization Checkpoint (Definition)
 Checkpoint is achieved when ALL are true (with evidence links below):
-1) SSOT exists: STATUS/PLAN/TASKS/DECISIONS present in docs/ and referenced from each other.
+1) SSOT bootstrap exists (historical): STATUS/PLAN/TASKS/DECISIONS were created and linked. Current active SSOT core is DECISIONS/STATUS/TASKS (D-001).
 2) V1 activation path identified:
    - We can point to exact file+line where V1 is selected OR why it cannot be selected.
 3) Repro baseline established:
@@ -154,26 +160,26 @@ Checkpoint is achieved when ALL are true (with evidence links below):
     - `grep_proofs.txt` (factory seam + no direct VertexAIClient in ProviderAdapterV1)
     - `rollback.txt` (copy-back rollback steps + snapshots)
 
-  - Phase 1.5 Provider abstraction hardening (config uyumluluğu + invariant testleri):
+  - Phase 1.5 Provider abstraction hardening (config compatibility + invariant tests):
   - Evidence root: `docs\evidence\T1.5_hardening_20260217-163300\`
   - Key files:
     - `pytest.txt` (QA PASS)
-    - `grep_proofs.txt` (pipeline_v1 VertexAIClient yok + ProviderFactory.create kullanımı)
+    - `grep_proofs.txt` (no VertexAIClient in pipeline_v1 + uses ProviderFactory.create)
     - `rollback.txt` (copy-back rollback + snapshot)
 
-  - Phase 1.5 Azure OpenAI provider adapter (ProviderFactory üzerinden):
+  - Phase 1.5 Azure OpenAI provider adapter (via ProviderFactory):
   - Evidence root: `docs\evidence\T1.5_azure_openai_20260217-170200\`
   - Key files:
     - `pytest.txt` (QA PASS)
     - `grep_proofs.txt` (factory registration + pipeline_v1 invariants)
-    - `rollback.txt` (rollback adımları)
+    - `rollback.txt` (rollback steps)
 
-  - Phase 1.5 Azure OpenAI UI config surface (provider alanları; secret yok):
+  - Phase 1.5 Azure OpenAI UI config surface (provider fields; no secret):
   - Evidence root: `docs\evidence\T1.5_azure_ui_config_20260217-184200\`
   - Key files:
     - `pytest.txt` (QA PASS)
     - `grep_proofs.txt` (factory + pipeline invariants)
-    - `rollback.txt` (rollback adımları)
+    - `rollback.txt` (rollback steps)
 
 
 ## Current Risks

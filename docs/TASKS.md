@@ -8,7 +8,7 @@
   - Owner: Builder / Verifier
 
 ## P0 - Must for Stabilization Checkpoint
-- [x] T0.1 Create SSOT docs (STATUS/PLAN/TASKS/DECISIONS)
+- [x] T0.1 Create SSOT docs (historical bootstrap: STATUS/PLAN/TASKS/DECISIONS; current active core is DECISIONS/STATUS/TASKS per D-001)
   - Evidence required: `tree docs /F`
   - Done evidence: [to fill]
   - Owner: Builder -> Verifier
@@ -55,30 +55,30 @@
   - Evidence: docs\evidence\T1.5_provider_abstraction_20260217-161800\
   - Owner: Builder -> Verifier
 
-- [x] T1.8 Phase 1.5 hardening (config uyumluluğu + factory invariantleri + unit testler)
+- [x] T1.8 Phase 1.5 hardening (config compatibility + factory invariants + unit tests)
   - Acceptance criteria:
-    - Config uyumluluğu: agent["provider_id"] || agent["provider"] || default "vertex"; agent["streaming"] || agent["stream"] || default False.
-    - ProviderFactory: "vertex" default kayıtlı; unknown provider_id => açık ValueError (silent fallback yok).
-    - ProviderAdapterV1: ProviderFactory kullanır; pipeline_v1 içinde doğrudan VertexAIClient(...) yok.
+    - Config compatibility: agent["provider_id"] || agent["provider"] || default "vertex"; agent["streaming"] || agent["stream"] || default False.
+    - ProviderFactory: "vertex" is registered by default; unknown provider_id => explicit ValueError (no silent fallback).
+    - ProviderAdapterV1 uses ProviderFactory; no direct VertexAIClient(...) in pipeline_v1.
   - Evidence: docs\evidence\T1.5_hardening_20260217-163300\
   - Owner: Builder -> Verifier
 
 - [x] T1.9 Azure OpenAI provider adapter (ProviderFactory seam; no UI/MCP wiring changes)
   - Acceptance criteria:
-    - ProviderClient: provider_id="azure_openai" ile HTTPS chat completions çalışır (non-streaming).
-    - stream=True => açık NotImplementedError (silent fallback yok).
-    - API key config’te tutulmaz; keyring’den gelen dosya yolundan okunur (strip).
-    - Başarı/hatada Usage DB row yazılır: provider/model_id/status/latency_ms/request_id (+ error_type).
-    - Bilinmeyen provider_id => ValueError (mevcut davranış korunur).
+    - ProviderClient: HTTPS chat completions work with provider_id="azure_openai" (non-streaming).
+    - stream=True => explicit NotImplementedError (no silent fallback).
+    - API key is not stored in config; it is read from the keyring-provided file path (strip).
+    - On success/error, a Usage DB row is written: provider/model_id/status/latency_ms/request_id (+ error_type).
+    - Unknown provider_id => ValueError (existing behavior is preserved).
   - Evidence: docs\evidence\T1.5_azure_openai_20260217-170200\
   - Owner: Builder -> Verifier
 
-- [x] T1.10 Azure OpenAI UI config surface (provider seçimi + alanlar; secret yok)
+- [x] T1.10 Azure OpenAI UI config surface (provider selection + fields; no secret)
   - Acceptance criteria:
     - UI “Add/Edit Bridge” formunda provider: vertex (default) + azure_openai.
-    - azure_openai seçilince azure_endpoint + azure_api_version zorunlu; deployment_name opsiyonel.
-    - Azure alanları provider vertex iken gizli; config’te mevcut değerler korunur.
-    - Config (data/config.json) restart sonrası aynı değerleri yükler; secret/key içeriği config’e yazılmaz.
+    - When azure_openai is selected, azure_endpoint + azure_api_version are required; deployment_name is optional.
+    - Azure fields are hidden when provider is vertex; existing config values are preserved.
+    - Config (data/config.json) reloads the same values after restart; secret/key content is not written into config.
     - pytest -q PASS.
   - Evidence: docs\evidence\T1.5_azure_ui_config_20260217-184200\
   - Owner: Builder -> Verifier
@@ -1419,7 +1419,7 @@ explicit banner preserved; ui check PASS).
   - Scope IN:
     - Vertex AI, Azure OpenAI, Bedrock, OpenAI provider readiness checks.
   - Scope OUT:
-    - Any fifth provider onboarding before freeze closure.
+    - Any fifth provider onboarding as freeze-closure evidence.
   - Acceptance:
     - For each of the 4 providers: connection create/update/preflight/runtime smoke evidence exists.
     - Usage rows preserve provider + model identity for downstream cost analysis.
@@ -1428,10 +1428,49 @@ explicit banner preserved; ui check PASS).
     - `docs\evidence\V11_PROVIDER_FREEZE_<timestamp>\`
     - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
   - Progress snapshot (current):
-    - Vertex AI PASS (live reconfirm), OpenAI PASS (live create/update/preflight/runtime + usage identity), Bedrock BLOCKER (connection/auth + invocation path PASS but usable live generation blocked by account quota + current adapter model allowlist constraints), Azure OpenAI OPEN.
-    - Evidence: `docs\evidence\V11_PROVIDER_VERTEX_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128\`; `docs\evidence\Bedrock_Real_Tests\Bedrock_Live_Tests_Results_Evalution.md`; `docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619\`; `docs\evidence\V11_BEDROCK_APIKEY_MODE_20260305-085503\`
+    - Vertex AI PASS (live reconfirm; preflight flow hardened with single-targeted dry probe classification + client/auth cache + bounded probe execution + empty-text false-fail fix), OpenAI PASS (live create/update/preflight/runtime + usage identity), Bedrock BLOCKER (connection/auth + invocation path PASS but usable live generation blocked by account quota + current adapter model allowlist constraints), Azure OpenAI PASS (live connection/create/preflight/update/runtime smoke + dashboard/usage visibility + modal contract lock + targeted hotfix closure).
+    - Evidence: `docs\evidence\V11_PROVIDER_VERTEX_20260305-001159\`; `docs\evidence\VERTEX_PREFLIGHT_SINGLE_PROBE_20260307-005435\`; `docs\evidence\VERTEX_PREFLIGHT_PERF_HOTFIX_20260307-011139\`; `docs\evidence\VERTEX_PROBE_CLASSIFIER_HOTFIX_20260307-012751\`; `docs\evidence\VERTEX_PREFLIGHT_EMPTY_TEXT_HOTFIX_20260307-013304\`; `docs\evidence\V11_PROVIDER_OPENAI_20260305-001159\`; `docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128\`; `docs\evidence\Bedrock_Real_Tests\Bedrock_Live_Tests_Results_Evalution.md`; `docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619\`; `docs\evidence\V11_BEDROCK_APIKEY_MODE_20260305-085503\`; `docs\evidence\Azure_real_tests\Azure OpenAI entegrasyonu.md`; `docs\evidence\V11_AZURE_MODAL_CONTRACT_PATCH_20260305-223056\`; `docs\evidence\HOTFIX_AZURE_DASH_VAULT_20260306-012035\`
   - Carry-forward note (post-freeze UI consistency):
     - Usage Summary KPI cards currently remain global under active filters while table/export follows filters; non-blocking for provider freeze, to be handled as follow-up polish.
+
+- V1.1 Contingency Lane (HF OpenAI-compatible chat-only; non-closure lane)
+  - Decision ref: D-034.
+  - Objective: Keep provider-agnostic bridge momentum while Bedrock remains external BLOCKER.
+  - Scope IN:
+    - Hugging Face OpenAI-compatible chat contract only (`/v1/chat/completions`).
+    - Non-streaming deterministic flow (`stream=false`) and explicit error surfacing.
+  - Scope OUT:
+    - HF Inference API (multi-task), streaming, and broad supported-model catalog guarantees.
+    - Any claim that HF evidence closes D-032 four-provider freeze.
+  - Acceptance:
+    - HF create/update/preflight/runtime smoke evidence exists under the chat-only contract.
+    - STATUS/TASKS explicitly keep Bedrock state as external BLOCKER until unblocked.
+    - D-032 freeze closure criteria remain unchanged.
+  - Evidence required:
+    - `docs\evidence\V11_PROVIDER_HF_CONTINGENCY_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
+  - Progress snapshot (current):
+    - HF contingency PASS (chat-only create/edit/preflight with explicit network gate + runtime smoke + usage provider/model identity + vault credential-source flow).
+    - This lane is non-closure only; D-032 four-provider freeze criteria are unchanged.
+  - Evidence:
+    - `docs\evidence\HF_MODAL_CONTRACT_TEXT_SYNC_20260306-054615\`; `docs\evidence\HF_NETWORK_GATE_UI_PREFLIGHT_FIX_20260306-060946\`; `docs\evidence\SSOT_SYNC_HF_CONTINGENCY_20260306-072439\`
+
+- V1.1 Contingency Lane (Ollama local chat-only; non-closure lane)
+  - Decision ref: D-035.
+  - Objective: Validate local-first fallback surface while Bedrock remains external BLOCKER.
+  - Scope IN:
+    - Ollama local runtime create/update/preflight/runtime smoke.
+    - Non-streaming deterministic flow and explicit error surfacing.
+  - Scope OUT:
+    - Streaming and remote provider expansion claims.
+    - Any claim that Ollama evidence closes D-032 four-provider freeze.
+  - Acceptance:
+    - Ollama create/update/preflight/runtime smoke evidence exists.
+    - Usage rows preserve provider + model identity for Ollama rows.
+    - STATUS/TASKS explicitly keep Bedrock as external BLOCKER and D-032 closure unchanged.
+  - Evidence required:
+    - `docs\evidence\V11_PROVIDER_OLLAMA_CONTINGENCY_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`
 
 - V1.1 LLM Lite Cost Gate (trust + consistency)
   - Decision ref: D-032.
@@ -1443,4 +1482,66 @@ explicit banner preserved; ui check PASS).
     - Cross-provider sample set includes Vertex AI, Azure OpenAI, Bedrock, OpenAI.
   - Evidence required:
     - `docs\evidence\V11_LLM_COST_GATE_<timestamp>\`
+    - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`, `test.txt`
+  - Kickoff snapshot (current):
+    - A1 acceptance matrix + evidence anchor set prepared; provider scope remains unchanged; Bedrock external BLOCKER remains carry-forward.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A1_KICKOFF_20260307-020000\`
+    - A2 completed: missing-pricing path made explicit in UI + CSV (`Pricing status` column), no SSOT drift.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A2_PRICING_DISCLOSURE_20260307-023238\`
+    - A3 completed: dashboard disclosure made dismissible; compact layout guard added for overflow pressure; runtime accepted with minor non-blocking UI carry-forward.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A3_DASHBOARD_DISCLOSURE_SCROLLFIX_20260307-024406\`
+    - A5 completed: deterministic priced-lane computation implemented; live OpenAI request produced non-zero USD and remained consistent across Dashboard/Usage Summary/Usage History/CSV with `Pricing status=Estimated`.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A5_20260307-030532\`; `docs\evidence\V11_LLM_COST_GATE_A5_PASS_SYNC_20260307-033321\`
+    - A6 completed: Vertex live unknown-pricing path reconfirmed as explicit/non-misleading (`cost=$0.0000` + `Pricing status=Missing pricing data`) with Dashboard/History/CSV parity.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A6_20260307-034036\`; `docs\evidence\V11_LLM_COST_GATE_A6_PASS_SYNC_20260307-065351\`
+    - A7 completed: Azure live known-pricing path reconfirmed with one real request; `cost_usd > 0` and `Pricing status=Estimated` matched across DB/History/CSV/Summary/Dashboard for same request id.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A7_20260307-065850\`; `docs\evidence\V11_LLM_COST_GATE_A7_PASS_SYNC_20260307-070531\`
+    - A8 completed: Vertex live known-pricing path reconfirmed with one real request; `cost_usd > 0` and `Pricing status=Estimated` matched across payload/DB/History/CSV/Summary/Dashboard for same request id.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A8_20260307-071112\`; `docs\evidence\V11_LLM_COST_GATE_A8_PASS_SYNC_20260307-073958\`
+    - A9 completed: gate-level closure reconfirm bundle created by consolidating A7+A8 live evidence into one no-code package.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A9_CLOSURE_BUNDLE_20260307-074738\`
+    - A10 completed: release-cut readiness reconciliation finalized as no-code SSOT/evidence sync; Usage/Budget rails closure boundary confirmed while Bedrock remains external BLOCKER lane.
+    - Evidence: `docs\evidence\V11_LLM_COST_GATE_A10_RELEASE_RECONCILE_20260307-075241\`
+
+- Remaining Open Set Snapshot (post-A10 reconciliation)
+  - PASS-now set (non-closure): network gate matrix (VertexAI/OpenAI/Azure/Ollama/HF), persona enforcement, copy-config contract regression.
+  - OPEN set: RC-EXT final release hygiene checklist (Health Alerts calibration, minimum shortcuts, security hygiene, debuggability minimum, packaging/versioning readiness).
+  - BLOCKER set: Bedrock provider allowlist/quota external dependency.
+  - Next narrow gate: RC-EXT combined final regression pack (Bedrock reminder included as external BLOCKER checkpoint).
+  - First release scope lock: Bedrock is hidden/de-scoped for first release while blocker persists.
+  - Bedrock re-enable path (post-unblock): unhide provider in UI -> run provider regression smoke -> reconfirm usage/dashboard parity.
+  - Sequencing lock: complete technical closure (Bedrock reminder checkpoint + final regression + final UI meta/layout pass) before full English documentation finalization.
+  - Evidence:
+    - `docs\evidence\V11_PROVIDER_OPENAI_PASS_SYNC_20260305-024128\`; `docs\evidence\HOTFIX_AZURE_DASH_VAULT_20260306-012035\`; `docs\evidence\HF_NETWORK_GATE_UI_PREFLIGHT_FIX_20260306-060946\`; `docs\evidence\OLLAMA_PREFLIGHT_REQUIRED_FIX_20260306-053551\`; `docs\evidence\P5_11PRS_PERSONA_RUNTIME_BINDING_20260301-001548\`; `docs\evidence\V10_GATE_RC_READINESS_20260304-223507\`; `docs\evidence\BEDROCK_LIVE_TEST_REVIEW_20260305-082619\`
+
+- V1.0 RC-EXT Final Regression + Release Hygiene (technical closure pack)
+  - Objective: Finalize release-quality closure after A10 by adding minimum runtime/safety/release-readiness checks.
+  - RC-EXT checks (release-close scope):
+    1) Health Alerts calibration (`health_alerts=PASS/FAIL` + window + thresholds + min_samples).
+    2) Minimum shortcuts baseline (`shortcuts=PASS/FAIL` + shortcut list).
+       - Current-surface scope: Connections (New/Edit), Usage History (Export/Clear), Policies Persona (Add New), Resilience Interceptors (Configure), Settings (Shortcuts/Reset), and global route shortcuts.
+       - Clarification: Usage History "View Details" modal is not a current product surface and is excluded from RC-EXT shortcut acceptance.
+       - Carry-forward (future enhancement): if a Usage History row-details modal is introduced later, it must implement the same Esc top-most-close shortcut contract.
+    3) Security hygiene minimum (`security_hygiene=PASS/FAIL` + notes):
+       - no secret/token plaintext leakage in logs/export,
+       - vault/credentials surfaces avoid accidental plaintext exposure,
+       - network-gate deterministic enforcement stays explicit,
+       - endpoint override schema validation remains explicit,
+       - single-instance + zombie-port hygiene reconfirm.
+    4) Debuggability minimum (`debuggability=PASS/FAIL` + 1-2 canonical errors):
+       - provider/model/request_id/short-reason error shape,
+       - evidence pack consistency,
+       - single-entrypoint contract non-regression.
+    5) Packaging/versioning readiness (`packaging=PASS/FAIL`):
+       - version string follows D-037 (`v0.6.x Early Access` current lane; no `v1.0` claim before domain-agnostic completion),
+       - milestone mapping is explicit (`0.7` RC-EXT+packaging, `0.8` hardening/docs, `0.9` migration-readiness, `1.0` final target),
+       - migration notes, first-run behavior, uninstall hygiene, license/third-party notices,
+       - release integrity set is mandatory (official channel tag + SHA256 + changelog/"what changed"),
+       - temporary unsigned mode (if still active) is explicitly disclosed with SmartScreen warning note,
+       - trademark policy baseline is present (forks cannot present name/logo as official),
+       - logo/app icon freeze is finalized at the same packaging closure point (release asset freeze).
+  - Post-RC (P1, non-blocking for first release):
+    - Performance smoke (`perf_smoke=PASS/FAIL` + dataset_size), including high-row history responsiveness and dashboard query load behavior.
+  - Evidence required:
+    - `docs\evidence\V10_RC_EXT_FINAL_<timestamp>\`
     - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`, `test.txt`

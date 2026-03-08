@@ -31,6 +31,14 @@
   };
 
   type DispatchError = { code?: string; message: string; details?: unknown };
+  type CanonicalErrorDetail = {
+    code: string;
+    provider?: string;
+    model_id?: string;
+    request_id?: string;
+    reason: string;
+    raw?: string;
+  };
 
   type SchemaHintField = {
     id: string;
@@ -109,6 +117,7 @@
   type BannerKind = "idle" | "info" | "success" | "danger";
   let bannerKind = $state<BannerKind>("idle");
   let bannerText = $state("");
+  let bannerDebugDetail = $state("");
   let bannerTimer: ReturnType<typeof setTimeout> | null = null;
 
   let detailsOpen = $state(false);
@@ -151,9 +160,42 @@
   let newWizardSchemaStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
   let newWizardNoticeKind = $state<BannerKind>("idle");
   let newWizardNoticeText = $state("");
+  let newWizardDebugDetail = $state("");
   function formatErrors(errors: string[] | undefined) {
     if (!errors || errors.length === 0) return "Unknown error.";
     return errors.join("; ");
+  }
+
+  function firstErrorReason(errors: string[] | undefined) {
+    if (!errors || errors.length === 0) return "Unknown error.";
+    const first = String(errors[0] || "").trim();
+    if (!first) return "Unknown error.";
+    return first;
+  }
+
+  function buildCanonicalErrorDetail(result: ConnectionsResponse): CanonicalErrorDetail {
+    const reason = firstErrorReason(result.errors);
+    const provider = String(result.normalized_payload?.provider_id || "").trim();
+    const modelId = String(result.normalized_payload?.model_id || "").trim();
+    const requestId = "";
+    const code = String(result.error?.code || "invalid_request").trim() || "invalid_request";
+    return {
+      code,
+      provider: provider || undefined,
+      model_id: modelId || undefined,
+      request_id: requestId || undefined,
+      reason,
+    };
+  }
+
+  function canonicalErrorDetailText(detail: CanonicalErrorDetail | null) {
+    if (!detail) return "";
+    const parts: string[] = [];
+    parts.push(`code=${detail.code}`);
+    if (detail.provider) parts.push(`provider=${detail.provider}`);
+    if (detail.model_id) parts.push(`model_id=${detail.model_id}`);
+    if (detail.request_id) parts.push(`request_id=${detail.request_id}`);
+    return parts.join(" ");
   }
 
   function formatSchemaHintError(error: DispatchError | null | undefined) {
@@ -273,15 +315,17 @@
     await loadNewWizardSchemaHint(id);
   }
 
-  function setNewWizardNotice(kind: BannerKind, text: string) {
+  function setNewWizardNotice(kind: BannerKind, text: string, debugDetail = "") {
     newWizardNoticeKind = kind;
     newWizardNoticeText = text;
-    setBanner(kind, text);
+    newWizardDebugDetail = debugDetail;
+    setBanner(kind, text, debugDetail);
   }
 
   function clearNewWizardNotice() {
     newWizardNoticeKind = "idle";
     newWizardNoticeText = "";
+    newWizardDebugDetail = "";
   }
 
   function setVaultNotice(kind: BannerKind, text: string) {
@@ -305,6 +349,11 @@
     return "api_key";
   }
 
+  function isLocalBridgeEndpoint(value: string) {
+    const v = String(value || "").trim();
+    return /^https?:\/\/(?:127\.0\.0\.1|localhost):\d+\/sse$/i.test(v);
+  }
+
   function helperCopy(fieldId: string) {
     const id = String(fieldId || "").trim().toLowerCase();
     if (id === "model_id") {
@@ -314,10 +363,22 @@
       return "File mode uses Credentials path. Manual mode uses AWS keys. API Key mode uses Bedrock bearer token.";
     }
     if (id === "endpoint") {
+      if (newWizardProvider === "ollama") {
+        return "Ollama base URL. Local default is http://127.0.0.1:11434.";
+      }
+      if (newWizardProvider === "huggingface") {
+        return "HF OpenAI-compatible base URL. Leave blank to use default (https://router.huggingface.co/v1).";
+      }
       return "Leave empty to use core defaults. Set only if your provider requires a custom base URL.";
     }
     if (id === "credentials_path") {
+      if (newWizardProvider === "huggingface") {
+        return "Path (or vault:// reference) for your HF access token. Use Browse or Vault.";
+      }
       return "Local credentials file path. Use Browse or Vault to fill this value.";
+    }
+    if (id === "hf_enable_network") {
+      return "Safety rail for live calls. Keep Disabled unless you explicitly want outbound HF requests.";
     }
     if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
       return "Bedrock manual credentials fields. Session token is optional for temporary credentials.";
@@ -629,17 +690,19 @@
     return "border-slate-800 bg-transparent text-slate-200";
   }
 
-  function setBanner(kind: BannerKind, text: string) {
+  function setBanner(kind: BannerKind, text: string, debugDetail = "") {
     if (bannerTimer) {
       clearTimeout(bannerTimer);
       bannerTimer = null;
     }
     bannerKind = kind;
     bannerText = text;
+    bannerDebugDetail = debugDetail;
     if (kind !== "idle" && text) {
       bannerTimer = setTimeout(() => {
         bannerKind = "idle";
         bannerText = "";
+        bannerDebugDetail = "";
         bannerTimer = null;
       }, 3200);
     }
@@ -652,6 +715,7 @@
     }
     bannerKind = "idle";
     bannerText = "";
+    bannerDebugDetail = "";
   }
 
   async function dispatchInvoke(promptPayload: Record<string, unknown>): Promise<ConnectionsResponse> {
@@ -692,8 +756,8 @@
       }
 
       pageStatus = "error";
-      const message = result.error?.message || formatErrors(result.errors);
-      setBanner("danger", `Failed to load connections: ${message}`);
+      const detail = buildCanonicalErrorDetail(result);
+      setBanner("danger", `Failed to load connections: ${detail.reason}`, canonicalErrorDetailText(detail));
     } catch (err: any) {
       pageStatus = "error";
       setBanner("danger", `Failed to load connections: ${err?.message || String(err)}`);
@@ -711,8 +775,8 @@
         await refreshConnections();
         setBanner("success", op === "connections.stop" ? "Connection stopped." : "Connection started.");
       } else {
-        const message = result.error?.message || formatErrors(result.errors);
-        setBanner("danger", `${op === "connections.stop" ? "Stop" : "Start"} failed: ${message}`);
+        const detail = buildCanonicalErrorDetail(result);
+        setBanner("danger", `${op === "connections.stop" ? "Stop" : "Start"} failed: ${detail.reason}`, canonicalErrorDetailText(detail));
       }
     } catch (err: any) {
       setBanner("danger", `Start/stop failed: ${err?.message || String(err)}`);
@@ -729,8 +793,8 @@
       if (result.ok && result.dry_run_trace) {
         setBanner("info", formatDryRunTrace(result.dry_run_trace));
       } else {
-        const message = result.error?.message || formatErrors(result.errors);
-        setBanner("danger", `Dry-run failed: ${message}`);
+        const detail = buildCanonicalErrorDetail(result);
+        setBanner("danger", `Dry-run failed: ${detail.reason}`, canonicalErrorDetailText(detail));
       }
     } catch (err: any) {
       setBanner("danger", `Dry-run failed: ${err?.message || String(err)}`);
@@ -828,8 +892,8 @@
       if (result.ok && result.config_text) {
         return result.config_text;
       }
-      const message = result.error?.message || formatErrors(result.errors);
-      setBanner("danger", `Copy Config failed: ${message}`);
+      const detail = buildCanonicalErrorDetail(result);
+      setBanner("danger", `Copy Config failed: ${detail.reason}`, canonicalErrorDetailText(detail));
     } catch (err: any) {
       setBanner("danger", `Copy Config failed: ${err?.message || String(err)}`);
     }
@@ -848,8 +912,8 @@
         await refreshConnections();
         setBanner("success", "Connection deleted.");
       } else {
-        const message = result.error?.message || formatErrors(result.errors);
-        setBanner("danger", `Delete failed: ${message}`);
+        const detail = buildCanonicalErrorDetail(result);
+        setBanner("danger", `Delete failed: ${detail.reason}`, canonicalErrorDetailText(detail));
       }
     } catch (err: any) {
       setBanner("danger", `Delete failed: ${err?.message || String(err)}`);
@@ -888,7 +952,17 @@
     return String(fieldId || "").trim() === "credentials_path";
   }
 
-  function triggerCredentialsBrowse(inputId: string) {
+  async function triggerCredentialsBrowse(fieldId: string, inputId: string) {
+    try {
+      const result = await dispatchInvoke({ op: "vault.pick_credentials_path" });
+      const selected = String(result.data?.path ?? "").trim();
+      if (result.ok && selected) {
+        updateWizardField(fieldId, selected);
+        return;
+      }
+    } catch {
+      // Fall back to native file input below.
+    }
     const el = document.getElementById(inputId) as HTMLInputElement | null;
     el?.click();
   }
@@ -959,7 +1033,7 @@
   function modelPlaceholderForProvider(providerId: ProviderId | null): string {
     const id = String(providerId || "").trim().toLowerCase();
     if (id === "vertex") return "Example: gemini-2.0-flash-001";
-    if (id === "azure_openai") return "Example: gpt-4o-mini";
+    if (id === "azure_openai") return "Example: gpt-4o-mini-deploy";
     if (id === "openai") return "Example: gpt-4o-mini";
     if (id === "bedrock") return "Example: anthropic.claude-3-5-sonnet";
     if (id === "huggingface") return "Example: meta-llama/Llama-3.1-8B-Instruct";
@@ -1012,6 +1086,21 @@
           delete payload.aws_session_token;
           delete payload.bedrock_api_key;
         }
+      } else if (providerId === "azure_openai") {
+        const deploymentName = String(payload.model_id ?? "").trim();
+        if (deploymentName) {
+          payload.deployment_name = deploymentName;
+        }
+      } else if (providerId === "ollama") {
+        const ollamaBaseUrl = String(payload.endpoint ?? "").trim();
+        if (ollamaBaseUrl) {
+          payload.ollama_base_url = ollamaBaseUrl;
+        }
+      } else if (providerId === "huggingface") {
+        const hfEndpoint = String(payload.endpoint ?? "").trim();
+        if (hfEndpoint) {
+          payload.hf_endpoint = hfEndpoint;
+        }
       }
       return payload;
     }
@@ -1051,8 +1140,8 @@
         return;
       }
 
-      const message = result.error?.message || formatErrors(result.errors);
-      setNewWizardNotice("danger", `Preflight failed: ${message}`);
+      const detail = buildCanonicalErrorDetail(result);
+      setNewWizardNotice("danger", `Preflight failed: ${detail.reason}`, canonicalErrorDetailText(detail));
     } catch (err: any) {
       setNewWizardNotice("danger", `Preflight failed: ${err?.message || String(err)}`);
     } finally {
@@ -1091,8 +1180,8 @@
         return;
       }
 
-      const message = result.error?.message || formatErrors(result.errors);
-      setNewWizardNotice("danger", `${wizardMode === "edit" ? "Update" : "Create"} failed: ${message}`);
+      const detail = buildCanonicalErrorDetail(result);
+      setNewWizardNotice("danger", `${wizardMode === "edit" ? "Update" : "Create"} failed: ${detail.reason}`, canonicalErrorDetailText(detail));
     } catch (err: any) {
       setNewWizardNotice("danger", `${wizardMode === "edit" ? "Update" : "Create"} failed: ${err?.message || String(err)}`);
     } finally {
@@ -1121,11 +1210,78 @@
       credentials_path: target.credentialsPath || "",
       ...(target.options ?? {}),
     };
+    if (target.providerId === "azure_openai") {
+      const mappedEndpoint = String((target.options ?? {})["azure_endpoint"] ?? "").trim();
+      if (!mappedEndpoint && target.endpoint) {
+        newWizardValues = { ...newWizardValues, azure_endpoint: target.endpoint };
+      }
+      const mappedDeployment = String((target.options ?? {})["deployment_name"] ?? "").trim();
+      if (mappedDeployment) {
+        newWizardValues = { ...newWizardValues, model_id: mappedDeployment };
+      }
+    } else if (target.providerId === "ollama") {
+      const mappedBaseUrl = String((target.options ?? {})["ollama_base_url"] ?? "").trim();
+      const runtimeEndpoint = String(target.endpoint ?? "").trim();
+      const endpointForForm =
+        mappedBaseUrl || (!isLocalBridgeEndpoint(runtimeEndpoint) ? runtimeEndpoint : "") || "http://127.0.0.1:11434";
+      newWizardValues = { ...newWizardValues, endpoint: endpointForForm, ollama_base_url: endpointForForm };
+    } else if (target.providerId === "huggingface") {
+      const mappedBaseUrl = String((target.options ?? {})["hf_endpoint"] ?? "").trim();
+      const runtimeEndpoint = String(target.endpoint ?? "").trim();
+      const endpointForForm =
+        mappedBaseUrl || (!isLocalBridgeEndpoint(runtimeEndpoint) ? runtimeEndpoint : "") || "https://router.huggingface.co/v1";
+      const rawGate = String((target.options ?? {})["hf_enable_network"] ?? "").trim().toLowerCase();
+      const gateForForm = rawGate === "true" || rawGate === "1" || rawGate === "yes" || rawGate === "on" ? "true" : "false";
+      newWizardValues = {
+        ...newWizardValues,
+        endpoint: endpointForForm,
+        hf_endpoint: endpointForForm,
+        hf_enable_network: gateForForm,
+      };
+    }
     clearNewWizardNotice();
     await loadNewWizardSchemaHint(target.providerId);
   }
 
   onMount(() => {
+    const onGlobalRefresh = () => {
+      void refreshConnections();
+    };
+    const onShortcutNewConnection = (event: Event) => {
+      openNewWizard();
+      event.preventDefault();
+    };
+    const onShortcutPrimaryAction = (event: Event) => {
+      if (!newWizardOpen || busyById.new) return;
+      void submitNewConnection();
+      event.preventDefault();
+    };
+    const onShortcutEscape = (event: Event) => {
+      if (vaultPickerOpen) {
+        closeVaultPicker();
+        event.preventDefault();
+        return;
+      }
+      if (deleteConfirmOpen) {
+        closeDeleteConfirm();
+        event.preventDefault();
+        return;
+      }
+      if (detailsOpen) {
+        closeDetails();
+        event.preventDefault();
+        return;
+      }
+      if (newWizardOpen) {
+        closeNewWizard();
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("synapse:global-refresh", onGlobalRefresh as EventListener);
+    window.addEventListener("synapse:shortcut-new-connection", onShortcutNewConnection as EventListener);
+    window.addEventListener("synapse:shortcut-primary-action", onShortcutPrimaryAction as EventListener);
+    window.addEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
+
     const persistent = uiPersistentCacheGet<Connection[]>(CONNECTIONS_CACHE_KEY, CONNECTIONS_PERSISTENT_CACHE_TTL_MS);
     if (persistent) {
       connections = persistent;
@@ -1138,16 +1294,18 @@
       window.setTimeout(() => {
         void refreshConnections();
       }, 90);
-      return;
-    }
-    if (persistent) {
+    } else if (persistent) {
       window.setTimeout(() => {
         void refreshConnections();
       }, 90);
-      return;
+    } else {
+      void refreshConnections();
     }
-    void refreshConnections();
     return () => {
+      window.removeEventListener("synapse:global-refresh", onGlobalRefresh as EventListener);
+      window.removeEventListener("synapse:shortcut-new-connection", onShortcutNewConnection as EventListener);
+      window.removeEventListener("synapse:shortcut-primary-action", onShortcutPrimaryAction as EventListener);
+      window.removeEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
       if (bannerTimer) {
         clearTimeout(bannerTimer);
         bannerTimer = null;
@@ -1183,6 +1341,12 @@
       <div class="min-w-0">
         {#if bannerText}
           <div class="truncate text-xs font-medium">{bannerText}</div>
+          {#if bannerDebugDetail}
+            <details class="mt-1 text-[10px]">
+              <summary class="cursor-pointer" style="color: var(--text-muted);">Details</summary>
+              <div class="mt-1 break-all font-mono" style="color: var(--text-muted);">{bannerDebugDetail}</div>
+            </details>
+          {/if}
         {:else}
           <div class="truncate text-xs" style="color: var(--text-muted);"> </div>
         {/if}
@@ -1572,6 +1736,12 @@
         <div class={`mt-4 rounded-md border p-3 text-xs ${bannerClass(newWizardNoticeKind)}`}>
           {#if newWizardNoticeText}
             <div class="font-medium">{newWizardNoticeText}</div>
+            {#if newWizardDebugDetail}
+              <details class="mt-2 text-[10px]">
+                <summary class="cursor-pointer" style="color: var(--text-muted);">Details</summary>
+                <div class="mt-1 break-all font-mono" style="color: var(--text-muted);">{newWizardDebugDetail}</div>
+              </details>
+            {/if}
           {:else if newWizardSchemaHint?.notes?.length}
             <div style="color: var(--text-muted);">{newWizardSchemaHint.notes.join(" ")}</div>
           {:else}
@@ -1748,7 +1918,7 @@
                             type="button"
                             class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
                             style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
-                            onclick={() => triggerCredentialsBrowse(`new-${field.id}-file`)}
+                            onclick={() => triggerCredentialsBrowse(field.id, `new-${field.id}-file`)}
                           >
                             Browse
                           </button>
@@ -1864,7 +2034,7 @@
                                 type="button"
                                 class="ui-focus h-9 shrink-0 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-white/5"
                                 style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
-                                onclick={() => triggerCredentialsBrowse(`new-${field.id}-file`)}
+                                onclick={() => triggerCredentialsBrowse(field.id, `new-${field.id}-file`)}
                               >
                                 Browse
                               </button>

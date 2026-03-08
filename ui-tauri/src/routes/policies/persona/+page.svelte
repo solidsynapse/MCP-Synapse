@@ -480,6 +480,19 @@
   });
 
   onMount(() => {
+    const onShortcutEscape = (event: Event) => {
+      if (addPresetOpen) {
+        closeAddPreset();
+        event.preventDefault();
+        return;
+      }
+      if (deleteConfirmOpen) {
+        closeDeleteConfirm();
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
+
     const cachedState = uiCacheGet<PersonaState | null>(PERSONA_STATE_CACHE_KEY, PERSONA_CACHE_TTL_MS);
     let refreshDelayMs = 0;
     if (cachedState) applyHydratedState(cachedState);
@@ -497,6 +510,7 @@
       void Promise.all([loadPersonaState(), loadConnectionTargets()]);
     }, refreshDelayMs);
     return () => {
+      window.removeEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
       if (bannerTimer) {
         clearTimeout(bannerTimer);
         bannerTimer = null;

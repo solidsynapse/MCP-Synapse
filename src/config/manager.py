@@ -168,6 +168,18 @@ class ConfigManager:
                 {"level": "warning", "text": "High Latency on Provider X"},
                 {"level": "info", "text": "Budget threshold nearing"},
             ],
+            "health_alerts_config": {
+                "window_rows": 500,
+                "min_samples_total": 20,
+                "min_samples_success": 10,
+                "success_rate_warning_pct": 95.0,
+                "success_rate_critical_pct": 85.0,
+                "latency_warning_ms": 8000,
+                "latency_critical_ms": 15000,
+                "budget_warning_pct": 75.0,
+                "budget_critical_pct": 90.0,
+                "monitor_only": True,
+            },
         }
 
     @staticmethod
@@ -413,21 +425,97 @@ class ConfigManager:
                 return port
         raise RuntimeError("No available ports in the configured range.")
 
+    @staticmethod
+    def default_provider_model_policies() -> dict:
+        # Strict mode is intentionally off by default so new provider models
+        # can be tried without code changes.
+        return {
+            "vertex": {
+                "strict": False,
+                "allowed": [
+                    "gemini-2.0-flash-001",
+                    "gemini-1.5-flash-002",
+                    "gemini-3-pro-preview",
+                    "gemini-3-flash",
+                ],
+            },
+            "openai": {"strict": False, "allowed": []},
+            "azure_openai": {"strict": False, "allowed": []},
+            "huggingface": {"strict": False, "allowed": []},
+            "ollama": {"strict": False, "allowed": []},
+            "bedrock": {"strict": False, "allowed": []},
+        }
+
+    def get_provider_model_policies(self) -> dict:
+        config = self._read_config()
+        defaults = self.default_provider_model_policies()
+        raw = config.get("provider_model_policies")
+        if not isinstance(raw, dict):
+            raw = {}
+        merged: dict[str, dict] = {}
+        for provider_id, default_policy in defaults.items():
+            candidate = raw.get(provider_id)
+            policy = dict(default_policy)
+            if isinstance(candidate, dict):
+                if "strict" in candidate:
+                    policy["strict"] = bool(candidate.get("strict"))
+                if isinstance(candidate.get("allowed"), list):
+                    allowed: list[str] = []
+                    for value in candidate.get("allowed") or []:
+                        s = str(value).strip()
+                        if s and s not in allowed:
+                            allowed.append(s)
+                    policy["allowed"] = allowed
+            merged[provider_id] = policy
+        return merged
+
+    def get_model_policy(self, provider_id: str) -> dict:
+        provider_key = str(provider_id or "").strip().lower()
+        policies = self.get_provider_model_policies()
+        policy = policies.get(provider_key)
+        if isinstance(policy, dict):
+            return policy
+        return {"strict": False, "allowed": []}
+
+    def is_model_allowed(self, provider_id: str, model_id: str) -> tuple[bool, bool, list[str]]:
+        policy = self.get_model_policy(provider_id)
+        strict = bool(policy.get("strict"))
+        allowed_raw = policy.get("allowed")
+        allowed: list[str] = []
+        if isinstance(allowed_raw, list):
+            for value in allowed_raw:
+                s = str(value).strip()
+                if s and s not in allowed:
+                    allowed.append(s)
+        model_text = str(model_id or "").strip()
+        if not strict:
+            return True, False, allowed
+        return model_text in allowed, True, allowed
+
     def get_allowed_models(self) -> list[str]:
+        # Backward compatibility for existing callsites expecting vertex list.
+        # Legacy config["allowed_models"] still overrides the vertex catalog
+        # when present, but strict enforcement is controlled by model policy.
         config = self._read_config()
         models = config.get("allowed_models")
-        default_model = "gemini-2.0-flash-001"
-        default_allowed = [default_model, "gemini-1.5-flash-002"]
         if isinstance(models, list) and models:
             allowed: list[str] = []
             for value in models:
-                s = str(value)
-                if s not in allowed:
+                s = str(value).strip()
+                if s and s not in allowed:
                     allowed.append(s)
-            if default_model not in allowed:
-                allowed.append(default_model)
+            if "gemini-2.0-flash-001" not in allowed:
+                allowed.append("gemini-2.0-flash-001")
+            if "gemini-3-pro-preview" not in allowed:
+                allowed.append("gemini-3-pro-preview")
+            if "gemini-3-flash" not in allowed:
+                allowed.append("gemini-3-flash")
             return allowed
-        return default_allowed
+        policy = self.get_model_policy("vertex")
+        allowed_raw = policy.get("allowed")
+        if isinstance(allowed_raw, list) and allowed_raw:
+            return [str(value).strip() for value in allowed_raw if str(value).strip()]
+        return ["gemini-2.0-flash-001", "gemini-1.5-flash-002", "gemini-3-pro-preview", "gemini-3-flash"]
 
     def get_policies_persona_state(self) -> dict:
         config = self._read_config()

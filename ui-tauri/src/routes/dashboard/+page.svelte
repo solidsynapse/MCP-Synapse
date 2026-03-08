@@ -9,7 +9,7 @@
   type TopExpensive = { id: string; time?: string; connection?: string; provider?: string; cost: string };
   type Breakdown = { name: string; color: string; cost: string };
   type Trend = { label: string; valueFormatted: string };
-  type Alert = { level: string; text: string; detail?: string };
+  type Alert = { level: string; text: string; detail?: string; monitor_only?: boolean };
 
   type DashboardState = {
     kpis: Kpi[];
@@ -118,7 +118,12 @@
       top_expensive: asDictList(src.top_expensive).map((v) => ({ id: String(v.id || ""), time: String(v.time || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), cost: String(v.cost || "") })),
       breakdown_legend: asDictList(src.breakdown_legend).map((v) => ({ name: String(v.name || ""), color: String(v.color || "#64748b"), cost: String(v.cost || "") })),
       trend_data: asDictList(src.trend_data).map((v) => ({ label: String(v.label || ""), valueFormatted: String(v.valueFormatted || "") })),
-      quick_alerts: asDictList(src.quick_alerts).map((v) => ({ level: String(v.level || "info"), text: String(v.text || ""), detail: String(v.detail || "") })),
+      quick_alerts: asDictList(src.quick_alerts).map((v) => ({
+        level: String(v.level || "info"),
+        text: String(v.text || ""),
+        detail: String(v.detail || ""),
+        monitor_only: Boolean(v.monitor_only),
+      })),
     };
   }
 
@@ -474,6 +479,7 @@
       roTop.disconnect();
     };
   });
+
 </script>
 
 <div class="space-y-4 px-5 pt-4 pb-0 overflow-x-hidden">
@@ -497,7 +503,10 @@
   </div>
 
   <div class="grid grid-cols-3 gap-4">
-    <div class="col-span-1 rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;">
+    <div
+      class="col-span-1 rounded-2xl border p-4 shadow-sm"
+      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;"
+    >
       <h3 class="mb-3 text-sm font-medium text-slate-300">Cost Trend (Last 30 Days)</h3>
       {#if trendData.length > 0}
         {@const tm = trendPath(trendData)}
@@ -532,7 +541,10 @@
       {/if}
     </div>
 
-    <div class="col-span-1 rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;">
+    <div
+      class="col-span-1 rounded-2xl border p-4 shadow-sm"
+      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;"
+    >
       <h3 class="mb-3 text-sm font-medium text-slate-300">Cost Breakdown by Provider</h3>
       {#if breakdownLegend.length > 0}
         {@const segs = donutSegments(breakdownLegend)}
@@ -569,16 +581,24 @@
       {/if}
     </div>
 
-    <div class="col-span-1 rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;">
-      <h3 class="mb-3 text-sm font-medium text-slate-300">Quick Health Alerts</h3>
+    <div
+      class="col-span-1 rounded-2xl border p-4 shadow-sm"
+      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: 250px;"
+    >
+      <h3 class="mb-3 text-sm font-medium text-slate-300">Quick Health Alerts ({orderedAlerts(quickAlerts).length})</h3>
       {#if orderedAlerts(quickAlerts).length > 0}
-        <div class="space-y-2">
+        <div class="max-h-[176px] space-y-2 overflow-y-auto pr-1">
           {#each visibleAlerts(orderedAlerts(quickAlerts)) as alert (alert.text)}
             {@const lvl = normalizeAlertLevel(alert.level)}
             <div class={`flex items-start gap-3 rounded-lg px-3 py-2 ${lvl === "critical" ? "border border-red-900/30 bg-red-900/10" : lvl === "warning" ? "border border-amber-900/30 bg-amber-900/10" : "border border-slate-700/40 bg-slate-700/20"}`}>
               <span class={`text-xs ${lvl === "critical" ? "text-red-400" : lvl === "warning" ? "text-amber-400" : "text-slate-300"}`}>{lvl === "critical" ? "!" : lvl === "warning" ? "i" : "*"}</span>
               <span class="flex min-w-0 flex-col">
                 <span class={`text-xs font-medium ${lvl === "critical" ? "text-red-200" : lvl === "warning" ? "text-amber-200" : "text-slate-200"}`}>{alert.text}</span>
+                {#if alert.monitor_only}
+                  <span class="mt-0.5 inline-flex w-fit rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-slate-300/85" style="border-color: var(--border-subtle);">
+                    Monitor-only
+                  </span>
+                {/if}
                 {#if alert.detail}
                   <span class="text-[10px] text-slate-300/80">{alert.detail}</span>
                 {/if}
@@ -600,7 +620,10 @@
   </div>
 
   <div class="grid grid-cols-3 gap-4">
-    <div class="col-span-2 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);">
+    <div
+      class="col-span-2 flex flex-col rounded-2xl border p-4 shadow-sm"
+      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);"
+    >
       <h3 class="mb-3 text-sm font-medium text-slate-300">Recent Requests</h3>
       <div class="flex-1 overflow-hidden rounded-lg border" style="border-color: var(--border-subtle);" bind:this={recentTableViewport}>
         <table class="w-full table-fixed text-left text-[11px] leading-4">
@@ -651,7 +674,10 @@
       </div>
     </div>
 
-    <div class="col-span-1 flex flex-col rounded-2xl border p-4 shadow-sm" style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);">
+    <div
+      class="col-span-1 flex flex-col rounded-2xl border p-4 shadow-sm"
+      style="background-color: var(--surface-1); border-color: var(--border-subtle); height: clamp(240px, 34vh, 360px);"
+    >
       <h3 class="mb-3 text-sm font-medium text-slate-300">Top Expensive Requests</h3>
       <div class="flex-1 space-y-0 overflow-hidden" bind:this={topExpensiveViewport}>
         {#if topExpensive.length > 0}
