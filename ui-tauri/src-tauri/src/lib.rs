@@ -2,8 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 static STOP_ALL_CONNECTIONS_ONCE: AtomicBool = AtomicBool::new(false);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DispatchError {
@@ -47,12 +51,16 @@ fn dispatch_execute_request_v1(agent_id: String, prompt: String) -> Result<Dispa
 
     let python = std::env::var("MCP_SYNAPSE_PYTHON").unwrap_or_else(|_| "python".to_string());
 
-    let output = Command::new(python)
+    let mut command = Command::new(python);
+    command
         .arg(script)
         .arg("--agent-id")
         .arg(agent_id)
         .arg("--prompt")
-        .arg(prompt)
+        .arg(prompt);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let output = command
         .output()
         .map_err(|e| format!("dispatch_spawn_failed: {e}"))?;
 
@@ -79,13 +87,16 @@ fn best_effort_stop_all_connections() {
     let script = repo_root.join("tools").join("headless_dispatch_v1.py");
     let python = std::env::var("MCP_SYNAPSE_PYTHON").unwrap_or_else(|_| "python".to_string());
     let prompt = r#"{"op":"connections.stop_all"}"#;
-    let _ = Command::new(python)
+    let mut command = Command::new(python);
+    command
         .arg(script)
         .arg("--agent-id")
         .arg("connections")
         .arg("--prompt")
-        .arg(prompt)
-        .output();
+        .arg(prompt);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    let _ = command.output();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
