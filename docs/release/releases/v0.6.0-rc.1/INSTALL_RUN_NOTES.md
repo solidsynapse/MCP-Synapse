@@ -1,9 +1,12 @@
 # INSTALL AND RUN NOTES - v0.6.0-rc.1
 
 ## Install
-1. Launch the official installer package from the release artifacts.
+1. Download one official installer artifact from the release page:
+   - `MCP Synapse_0.6.0-rc.1_x64-setup.exe` (NSIS installer)
+   - `MCP Synapse_0.6.0-1_x64_en-US.msi` (MSI installer)
 2. Keep the default destination unless your environment requires a custom path.
 3. Complete setup and launch MCP Synapse from Start Menu shortcut.
+4. `mcp-synapse.exe` is a build output and is not part of the public end-user upload set.
 
 ## Run behavior
 - Runtime profile is single and fast by default (worker-primary behavior).
