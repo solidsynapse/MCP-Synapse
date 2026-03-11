@@ -1,6 +1,11 @@
 ﻿# MCP Synapse
 
-MCP Synapse is a local-first control plane for MCP connections and request routing. It provides a unified desktop surface to manage connections, apply policy and resilience controls, and inspect usage while keeping provider execution in the backend core.
+MCP Synapse is a provider-agnostic MCP control plane for managing connections, routing requests, and enforcing policy and resilience controls across AI vendors. It provides a local-first desktop runtime while keeping provider execution in the backend core.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand_assets/mcp-lockup-horizontal-dark.png">
+  <img alt="MCP Synapse" src="docs/brand_assets/mcp-lockup-horizontal-light.png" width="560">
+</picture>
 
 ## Early Access Status
 
@@ -8,6 +13,13 @@ This repository is in the `v0.6.x` Early Access release lane.
 
 - Current release package: [`docs/release/releases/v0.6.0-rc.1/`](docs/release/releases/v0.6.0-rc.1/)
 - Binding project SSOT: [`docs/DECISIONS.md`](docs/DECISIONS.md), [`docs/STATUS.md`](docs/STATUS.md), [`docs/TASKS.md`](docs/TASKS.md)
+
+## Quick Start
+
+1. Use the official `v0.6.0-rc.1` release package and review [`INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.0-rc.1/INSTALL_RUN_NOTES.md).
+2. Verify installer hashes against [`SHA256SUMS.txt`](docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt).
+3. Install and launch MCP Synapse.
+4. Review [`UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md) for current SmartScreen guidance.
 
 ## Why MCP Synapse Exists
 
