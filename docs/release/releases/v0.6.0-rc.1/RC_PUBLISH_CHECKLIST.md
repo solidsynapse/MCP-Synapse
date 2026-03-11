@@ -63,9 +63,11 @@ git add -u ui-tauri/src/routes/connections
 git status --short
 git commit -m "release(rc): v0.6.0-rc.1 runway closeout and RC-ready checkpoint"
 
-git tag -a v0.6.0-rc.1 -m "MCP Synapse v0.6.0-rc.1"
+# Do not rewrite an existing release tag.
+# If v0.6.0-rc.1 already exists, create a closeout tag on the final commit.
+git tag -a v0.6.0-rc.1-final -m "MCP Synapse v0.6.0-rc.1 final runway closeout"
 git show --stat --oneline HEAD
-git tag -n1 v0.6.0-rc.1
+git tag -n1 v0.6.0-rc.1-final
 ```
 
 ## 4) Publish payload
