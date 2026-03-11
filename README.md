@@ -14,6 +14,12 @@ This repository is in the `v0.6.x` Early Access release lane.
 - Current release package: [`docs/release/releases/v0.6.0-rc.1/`](docs/release/releases/v0.6.0-rc.1/)
 - Binding project SSOT: [`docs/DECISIONS.md`](docs/DECISIONS.md), [`docs/STATUS.md`](docs/STATUS.md), [`docs/TASKS.md`](docs/TASKS.md)
 
+## Source Visibility and Usage
+
+MCP Synapse source is publicly viewable, but this project is not open source.  
+All rights are reserved unless explicitly granted by Solid Synapse.  
+Forks, modified builds, and redistributed versions must not use MCP Synapse branding in a way that implies official distribution or endorsement.
+
 ## Quick Start
 
 1. Use the official `v0.6.0-rc.1` release package and review [`INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.0-rc.1/INSTALL_RUN_NOTES.md).
