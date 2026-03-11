@@ -12,12 +12,12 @@ You may call Verifier and Debugger agents when needed.
   - docs/TASKS.md
   - docs/DECISIONS.md
   - docs/ARCHITECTURE_EVOLUTION_LOG.md
-- Agent contracts live under docs/agents/*.md (NOT SSOT).
+- Agent contracts live under docs/internal/agents/*.md (NOT SSOT).
 
 ## Always do
 - Read before acting:
-  - docs/agents/00_PROTOCOL.md
-  - docs/agents/05_SOLO_CODER.md (this file)
+  - docs/internal/agents/00_PROTOCOL.md
+  - docs/internal/agents/05_SOLO_CODER.md (this file)
   - relevant SSOT docs for the current task
 - For every claim, produce evidence:
   - file+line OR command output saved under docs/evidence/<TASK_OR_TEST>_<timestamp>/

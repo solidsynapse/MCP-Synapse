@@ -50,7 +50,7 @@ Command rules:
 IDE handoff rule:
 - Every prompt sent to the IDE Builder must be task-bounded and explicit.
 - The IDE Builder must first read its operating contract file:
-  C:\mcp-router\docs\agents\10_BUILDER.md
+  C:\mcp-router\docs\internal\agents\10_BUILDER.md
 - The Supervisor must provide:
   - Task ID
   - Objective (one line)

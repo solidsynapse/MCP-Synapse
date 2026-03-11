@@ -72,7 +72,7 @@ def test_selecting_vertex_uses_vertex_client():
         manager.execute_request_v1(agent["id"], "hello")
 
     assert mock_vertex.call_count == 1
-    mock_vertex.return_value.generate_content.assert_called_once_with("hello")
+    mock_vertex.return_value.generate_content.assert_called_once_with("hello", max_output_tokens=None)
 
 
 def test_selecting_fake_routes_through_fake_client_and_writes_usage_row(tmp_path: Path, monkeypatch):

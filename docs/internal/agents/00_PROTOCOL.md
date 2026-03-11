@@ -14,7 +14,7 @@ Only these files are SSOT:
 Any claim must be backed by evidence: file+line or command output.
 
 ## Agent contracts (NOT SSOT)
-- docs/agents/*.md define agent behavior and boundaries.
+- docs/internal/agents/*.md define agent behavior and boundaries.
 - They must not conflict with SSOT.
 
 ## Evidence standard

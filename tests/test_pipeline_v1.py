@@ -101,7 +101,7 @@ def test_observer_isolation():
 
         result = manager.execute_request_v1(agent["id"], "hello")
 
-        mock_vertex.return_value.generate_content.assert_called_once_with("hello")
+        mock_vertex.return_value.generate_content.assert_called_once_with("hello", max_output_tokens=None)
         mock_usage.log_usage.assert_called_once()
         assert result == fake_result
 
@@ -128,6 +128,6 @@ def test_successful_end_to_end_pipeline():
 
         result = manager.execute_request_v1(agent["id"], "prompt text")
 
-        mock_vertex.return_value.generate_content.assert_called_once_with("prompt text")
+        mock_vertex.return_value.generate_content.assert_called_once_with("prompt text", max_output_tokens=None)
         mock_usage.log_usage.assert_called_once()
         assert result == fake_result

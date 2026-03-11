@@ -1629,6 +1629,7 @@ explicit banner preserved; ui check PASS).
   - Step 4 (final SSOT sweep):
     - [x] DECISIONS/STATUS/TASKS sync checkpoint recorded
     - [x] single-runtime release stance kept consistent in SSOT + release docs
+    - [x] D-039 Public Repository Surface Policy recorded and aligned with public-surface cleanup posture (product-first root, internal/archive segregation, deterministic reversible cleanup).
   - Step 5 (RC decision gate):
     - [x] RC final decision
     - Gate status: RC READY after consolidated final preflight chain:

@@ -48,20 +48,20 @@ def test_bedrock_stream_true_raises_not_implemented():
     assert "streaming" in str(excinfo.value)
 
 
-def test_bedrock_generate_content_gate_disabled_raises_not_implemented():
+def test_bedrock_manual_credentials_missing_keys_raises_value_error():
     client = ProviderFactory.create(
         "bedrock",
         _make_context(
-            agent={"aws_region": "us-east-1"},
+            agent={"aws_region": "us-east-1", "credential_source": "manual"},
             model_id="amazon.titan-text-express-v1",
             credentials_path="/path/to/creds",
         ),
     )
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(ValueError) as excinfo:
         client.generate_content("hello", stream=False)
     msg = str(excinfo.value)
-    assert "gate" in msg
-    assert "bedrock_enable_network" in msg
+    assert "aws_access_key_id" in msg
+    assert "aws_secret_access_key" in msg
 
 
 def test_bedrock_dependency_imports_work():

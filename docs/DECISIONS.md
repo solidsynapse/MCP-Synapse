@@ -840,6 +840,17 @@ P4 UI PREP is ALLOWED when:
     - forks/re-distributions must not present product name/logo as official.
   - Code signing is planned for `0.9.x -> 1.0.0` phase; until then, integrity/traceability controls above are non-optional.
 
+## D-039 — Public Repository Surface Policy
+
+- Date: 2026-03-11
+- Decision:
+  - The public repository MUST present a product-first surface.
+  - Internal orchestration materials, handoff packs, backup/recovery files, probe dumps, local logs, temporary exports, and internal workflow contracts MUST NOT remain on the primary public-facing repository surface unless explicitly required by SSOT or release integrity policy.
+  - Historical or internal-only materials that must be retained SHALL live under a clearly labeled internal/archive path.
+- Constraints:
+  - This policy does not authorize deletion of SSOT documents or release-integrity artifacts.
+  - Cleanup must remain deterministic, evidence-backed, and reversible.
+
 ### 2026-03-08 SSOT Sync Checkpoint (non-normative; no new decision)
 - This checkpoint records current truth alignment only; it does not add or change normative policy.
 - Blocker-1 no-console closure is treated as closed on current evidence (`CREATE_NO_WINDOW` hotfix + packaged revalidation):

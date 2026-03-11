@@ -44,6 +44,33 @@ class _FakeConfig:
     def get_policies_persona_state(self) -> dict:
         return copy.deepcopy(self._persona_state)
 
+    def get_policies_optimizations_state(self) -> dict:
+        return {
+            "enabled": False,
+            "context_caching_enabled": False,
+            "request_dedup_enabled": False,
+        }
+
+    @staticmethod
+    def default_optimizations_state() -> dict:
+        return {
+            "context_caching_enabled": False,
+            "request_dedup_enabled": False,
+        }
+
+    def get_resilience_interceptors_state(self) -> dict:
+        return {
+            "enabled_by_id": {},
+            "settings_by_id": {},
+        }
+
+    @staticmethod
+    def default_resilience_interceptors_state() -> dict:
+        return {
+            "enabled_by_id": {},
+            "settings_by_id": {},
+        }
+
 
 class _FakeUsageDb:
     def log_usage(self, **_kwargs) -> None:

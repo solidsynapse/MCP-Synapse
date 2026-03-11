@@ -9,7 +9,7 @@ class _DummyConfig:
         return list(self._connections)
 
 
-def test_p5_9a_dry_run_uses_options_project_id_for_preflight() -> None:
+def test_p5_9a_dry_run_uses_options_project_id_for_preflight(monkeypatch) -> None:
     connections = [
         {
             "id": "c-vertex-1",
@@ -24,6 +24,9 @@ def test_p5_9a_dry_run_uses_options_project_id_for_preflight() -> None:
         }
     ]
     mgr = ServerManager(config=_DummyConfig(connections))
+    # Keep this test deterministic: validate preflight payload mapping only,
+    # not external ADC/network availability.
+    monkeypatch.setattr(mgr, "_run_vertex_preflight_probe", lambda **_kwargs: (True, None))
 
     result = mgr.dry_run_connection({"connection_id": "c-vertex-1"})
 

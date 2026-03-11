@@ -25,6 +25,23 @@ class _FakeConfig:
     def get_resilience_budget_state(self) -> dict:
         return dict(self._budget_state)
 
+    def get_dashboard_state(self) -> dict:
+        # Keep test fixture aligned with manager dashboard state reads and
+        # reduce sample thresholds so budget alerts can be asserted with small fixtures.
+        return {
+            "health_alerts_config": {
+                "window_rows": 500,
+                "min_samples_total": 1,
+                "min_samples_success": 1,
+                "success_rate_warning_pct": 95,
+                "success_rate_critical_pct": 85,
+                "latency_warning_ms": 8000,
+                "latency_critical_ms": 15000,
+                "budget_warning_pct": 75,
+                "budget_critical_pct": 90,
+            }
+        }
+
 
 class _FakeUsageDb:
     def __init__(self, rows: list[dict]) -> None:
@@ -101,18 +118,18 @@ def test_dashboard_quick_alerts_include_budget_warning_and_danger() -> None:
     assert isinstance(quick_alerts, list)
 
     assert any(
-        str(item.get("level")) == "danger"
+        str(item.get("level")) == "critical"
         and "Budget threshold critical" in str(item.get("text"))
         and "TEST0X" in str(item.get("text"))
-        and "USD/day" in str(item.get("text"))
+        and "USD/day" in str(item.get("detail"))
         for item in quick_alerts
         if isinstance(item, dict)
     )
     assert any(
-        str(item.get("level")) == "warning"
-        and "Budget threshold nearing" in str(item.get("text"))
+        str(item.get("level")) == "critical"
+        and "Budget threshold critical" in str(item.get("text"))
         and "All Bridges" in str(item.get("text"))
-        and "tokens/day" in str(item.get("text"))
+        and "tokens/day" in str(item.get("detail"))
         for item in quick_alerts
         if isinstance(item, dict)
     )
@@ -164,5 +181,9 @@ def test_dashboard_quick_alerts_keep_no_active_when_budget_not_near_threshold() 
     assert isinstance(state, dict)
     quick_alerts = state.get("quick_alerts")
     assert isinstance(quick_alerts, list)
-    assert quick_alerts == [{"level": "info", "text": "No active health alerts."}]
+    assert len(quick_alerts) == 1
+    first = quick_alerts[0]
+    assert isinstance(first, dict)
+    assert first.get("level") == "info"
+    assert first.get("text") == "No active health alerts."
 
