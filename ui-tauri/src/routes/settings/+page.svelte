@@ -378,6 +378,24 @@
 
         <div class="flex items-center justify-between gap-4 py-3">
           <div class="min-w-0">
+            <div class="text-sm font-semibold" style="color: var(--text-primary);">Check for updates</div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted);">Opens the latest desktop download page.</div>
+          </div>
+          <a
+            href="https://mcpsynapse.dev/download"
+            target="_blank"
+            rel="noreferrer noopener"
+            class={`ui-focus inline-flex items-center justify-center rounded-md border px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:scale-[0.98] ${ACTION_WIDTH_CLASS}`}
+            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary); box-shadow: var(--shadow-1);"
+          >
+            Open
+          </a>
+        </div>
+
+        <div class="border-b" style="border-color: var(--border-subtle);"></div>
+
+        <div class="flex items-center justify-between gap-4 py-3">
+          <div class="min-w-0">
             <div class="text-sm font-semibold" style="color: var(--text-primary);">Reset UI session</div>
             <div class="mt-1 text-xs" style="color: var(--text-muted);">Resets settings to defaults. This only affects UI settings.</div>
           </div>
@@ -398,23 +416,11 @@
     <div class="ui-title">About</div>
     <div class="mt-2 space-y-2 text-sm" style="color: var(--text-muted);">
       <div class="font-medium" style="color: var(--text-primary);">What is MCP Synapse</div>
-      <div>MCP Synapse is a provider-agnostic control plane for MCP tool execution. Run and govern the same workflows across AI vendors without rewriting your setup.</div>
-      <div>Built for local-first operation, MCP Synapse focuses on portable configuration, deterministic validation, and operational governance.</div>
+      <div>MCP Synapse is a local-first control plane for MCP connections and request routing. It provides one interface across providers without per-vendor rewrites.</div>
       <div class="pt-1 font-medium" style="color: var(--text-primary);">Why developers use it</div>
-      <div>Portability by design: manage connections through a unified surface and export canonical MCP configuration.</div>
-      <div>Deterministic confidence: validate wiring with offline preflight and dry-run checks before live calls.</div>
-      <div>Governance and safety rails: apply personas and policies, enable optimizations, and enforce budgets from one UI.</div>
+      <div>Developers use it for portable configuration, deterministic validation, and operational controls in a single workflow.</div>
       <div class="pt-1 font-medium" style="color: var(--text-primary);">Local-first and security</div>
-      <div>Bring your own keys: credentials stay on-device. Usage logs are local and follow your retention settings.</div>
-    </div>
-    <div class="mt-4">
-      <div class="ui-subtitle">Release notes</div>
-      <ul class="mt-2 list-disc pl-5 text-sm" style="color: var(--text-muted);">
-        <li>Canonical config export for client integration.</li>
-        <li>Offline deterministic preflight and dry-run checks.</li>
-        <li>Policy and resilience layers: personas, optimizations, budget guards, interceptors.</li>
-        <li>Usage visibility with summary KPIs and request history export.</li>
-      </ul>
+      <div>Credentials stay local, usage visibility stays local, and automatic fallback safety helps keep request flows stable.</div>
     </div>
   </div>
 </div>

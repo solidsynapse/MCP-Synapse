@@ -1,12 +1,21 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from "svelte";
-  import { uiCacheGet, uiCacheSet, uiPersistentCacheGet, uiPersistentCacheSet, uiRunDeduped } from "$lib/ui_session";
+  import {
+    PHASE1_TTL_CACHE_OPS,
+    PHASE1_TTL_CACHE_TTL_MS,
+    uiBuildOpCacheKey,
+    uiCacheGet,
+    uiCacheSet,
+    uiInvalidateOpCaches,
+    uiRunDeduped,
+    uiTraceOpCache,
+  } from "$lib/ui_session";
 
   type BannerKind = "idle" | "info" | "success" | "danger";
   type DispatchError = { code?: string; message?: string };
   type Kpi = { label: string; value: string; icon?: string };
-  type RecentRequest = { time: string; request_id?: string; status: string; connection?: string; provider: string; latency: string; tokens: string; cost: string };
-  type TopExpensive = { id: string; time?: string; connection?: string; provider?: string; cost: string };
+  type RecentRequest = { time: string; request_id?: string; status: string; connection?: string; provider: string; model_id?: string; latency: string; tokens: string; cost: string };
+  type TopExpensive = { id: string; time?: string; connection?: string; provider?: string; model_id?: string; cost: string };
   type Breakdown = { name: string; color: string; cost: string };
   type Trend = { label: string; valueFormatted: string };
   type Alert = { level: string; text: string; detail?: string; monitor_only?: boolean };
@@ -30,13 +39,25 @@
   };
 
   const KPI_SLOTS: Array<{ label: string; valueKey: string; icon: string; t1: string; t2: string }> = [
-    { label: "Total Cost USD", valueKey: "Total Cost USD", icon: "◈", t1: "Total Cost", t2: "USD" },
-    { label: "Total Requests", valueKey: "Total Requests", icon: "⇄", t1: "Total", t2: "Requests" },
-    { label: "Total Tokens", valueKey: "Total Tokens", icon: "◎", t1: "Total", t2: "Tokens" },
-    { label: "Success Rate %", valueKey: "Success Rate %", icon: "✓", t1: "Success Rate", t2: "%" },
-    { label: "Avg Latency ms", valueKey: "Avg Latency ms", icon: "⏱", t1: "Avg Latency", t2: "ms" },
-    { label: "Active Bridges", valueKey: "Active Bridges count", icon: "⛓", t1: "Active Bridges", t2: "count" },
+    { label: "Total Cost USD", valueKey: "Total Cost USD", icon: "cost", t1: "Total Cost", t2: "USD" },
+    { label: "Total Requests", valueKey: "Total Requests", icon: "requests", t1: "Total", t2: "Requests" },
+    { label: "Total Tokens", valueKey: "Total Tokens", icon: "tokens", t1: "Total", t2: "Tokens" },
+    { label: "Success Rate %", valueKey: "Success Rate %", icon: "success", t1: "Success Rate", t2: "%" },
+    { label: "Avg Latency ms", valueKey: "Avg Latency ms", icon: "latency", t1: "Avg Latency", t2: "ms" },
+    { label: "Active Bridges", valueKey: "Active Bridges count", icon: "bridges", t1: "Active Bridges", t2: "count" },
   ];
+  const KPI_ICON_PATHS: Record<string, string[]> = {
+    cost: ["M4 8h16v10H4V8z", "M4 11h16", "M9 14h3"],
+    requests: ["M7 7h10", "M7 12h10", "M7 17h10", "M5 7l2 2-2 2", "M19 17l-2-2 2-2"],
+    tokens: ["M8 7c0 1.1 1.8 2 4 2s4-.9 4-2-1.8-2-4-2-4 .9-4 2z", "M8 7v6c0 1.1 1.8 2 4 2s4-.9 4-2V7", "M8 10c0 1.1 1.8 2 4 2s4-.9 4-2"],
+    success: ["M12 3l7 4v5c0 5-3 9-7 11-4-2-7-6-7-11V7l7-4z", "M9.5 12.5l1.8 1.8 3.4-3.4"],
+    latency: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"],
+    bridges: ["M10 13a5 5 0 0 1 0-7l1.5-1.5a5 5 0 1 1 7 7L17 12", "M14 11a5 5 0 0 1 0 7L12.5 19.5a5 5 0 1 1-7-7L7 12"],
+  };
+
+  function kpiIconPaths(key: string): string[] {
+    return KPI_ICON_PATHS[key] ?? [];
+  }
 
   const DEFAULT_STATE: DashboardState = {
     kpis: [],
@@ -89,9 +110,7 @@
   let topExpensiveViewport: HTMLDivElement | null = null;
   let trendChartWrap: HTMLDivElement | null = null;
   let breakdownChartWrap: HTMLDivElement | null = null;
-  const DASHBOARD_CACHE_KEY = "dashboard.state";
-  const DASHBOARD_CACHE_TTL_MS = 45000;
-  const DASHBOARD_PERSISTENT_CACHE_TTL_MS = 5 * 60 * 1000;
+  const DASHBOARD_OP = "dashboard.get_state";
 
   function bannerClass(kind: BannerKind) {
     if (kind === "success") return "border-emerald-900/40 bg-emerald-400/10 text-emerald-200";
@@ -114,8 +133,8 @@
     const src = state ?? DEFAULT_STATE;
     return {
       kpis: asDictList(src.kpis).map((v) => ({ label: String(v.label || ""), value: String(v.value || ""), icon: String(v.icon || "") })),
-      recent_requests: asDictList(src.recent_requests).map((v) => ({ time: String(v.time || ""), request_id: String(v.request_id || ""), status: String(v.status || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), latency: String(v.latency || ""), tokens: String(v.tokens || ""), cost: String(v.cost || "") })),
-      top_expensive: asDictList(src.top_expensive).map((v) => ({ id: String(v.id || ""), time: String(v.time || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), cost: String(v.cost || "") })),
+      recent_requests: asDictList(src.recent_requests).map((v) => ({ time: String(v.time || ""), request_id: String(v.request_id || ""), status: String(v.status || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), model_id: String(v.model_id || ""), latency: String(v.latency || ""), tokens: String(v.tokens || ""), cost: String(v.cost || "") })),
+      top_expensive: asDictList(src.top_expensive).map((v) => ({ id: String(v.id || ""), time: String(v.time || ""), connection: String(v.connection || ""), provider: String(v.provider || ""), model_id: String(v.model_id || ""), cost: String(v.cost || "") })),
       breakdown_legend: asDictList(src.breakdown_legend).map((v) => ({ name: String(v.name || ""), color: String(v.color || "#64748b"), cost: String(v.cost || "") })),
       trend_data: asDictList(src.trend_data).map((v) => ({ label: String(v.label || ""), valueFormatted: String(v.valueFormatted || "") })),
       quick_alerts: asDictList(src.quick_alerts).map((v) => ({
@@ -193,10 +212,42 @@
     return await invoke("dispatch_execute_request_v1", { agentId: "dashboard", agent_id: "dashboard", prompt: JSON.stringify(promptPayload) }) as DashboardResponse;
   }
 
-  async function loadDashboardState(fromGlobalRefresh = false) {
+  function dashboardCacheKey() {
+    return uiBuildOpCacheKey(DASHBOARD_OP, { op: DASHBOARD_OP }, {});
+  }
+
+  async function loadDashboardState(fromGlobalRefresh = false, forceRefresh = false) {
     setBanner("idle", "");
+    const source = fromGlobalRefresh ? "dashboard.global_refresh_event" : "dashboard.load";
+    const cacheKey = dashboardCacheKey();
+    if (forceRefresh) {
+      uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+        reason: fromGlobalRefresh ? "global_refresh_event" : "force_refresh",
+        source,
+        route: "/dashboard",
+      });
+    }
     try {
-      const result = await uiRunDeduped(DASHBOARD_CACHE_KEY, async () => await dispatchInvoke({ op: "dashboard.get_state" }));
+      const cached = uiCacheGet<DashboardState>(cacheKey, PHASE1_TTL_CACHE_TTL_MS);
+      uiTraceOpCache({
+        op: DASHBOARD_OP,
+        status: cached ? "HIT" : "MISS",
+        route: "/dashboard",
+        source,
+        reason: "ttl_lookup",
+        key: cacheKey,
+      });
+      if (cached) {
+        applyState(cached);
+        if (fromGlobalRefresh) {
+          setBanner("success", "Dashboard refreshed.");
+          window.setTimeout(() => {
+            if (bannerKind === "success") setBanner("idle", "");
+          }, 1200);
+        }
+        return;
+      }
+      const result = await uiRunDeduped(cacheKey, async () => await dispatchInvoke({ op: DASHBOARD_OP }));
       if (!result.ok) {
         const code = result.error?.code ? `${result.error.code}: ` : "";
         const message = result.error?.message || "request failed";
@@ -206,12 +257,7 @@
       const state = responseState(result as DashboardResponse & Record<string, unknown>);
       const normalized = normalizeState(state);
       applyState(normalized);
-      if (state) {
-        uiCacheSet(DASHBOARD_CACHE_KEY, normalized);
-        uiPersistentCacheSet(DASHBOARD_CACHE_KEY, normalized);
-      } else {
-        uiCacheSet(DASHBOARD_CACHE_KEY, null);
-      }
+      uiCacheSet(cacheKey, normalized);
       if (fromGlobalRefresh) {
         setBanner("success", "Dashboard refreshed.");
         window.setTimeout(() => {
@@ -404,6 +450,16 @@
     return connection || provider || "-";
   }
 
+  function requestModelTooltip(req: RecentRequest): string | undefined {
+    const modelId = String(req.model_id || "").trim();
+    return modelId || undefined;
+  }
+
+  function topModelTooltip(item: TopExpensive): string | undefined {
+    const modelId = String(item.model_id || "").trim();
+    return modelId || undefined;
+  }
+
   function recomputeTopExpensiveVisibleRows() {
     const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 0;
     const boxHeight = topExpensiveViewport?.clientHeight || 0;
@@ -444,14 +500,19 @@
   }
 
   onMount(() => {
-    const persistent = uiPersistentCacheGet<DashboardState | null>(DASHBOARD_CACHE_KEY, DASHBOARD_PERSISTENT_CACHE_TTL_MS);
-    if (persistent) applyState(persistent);
-    const cached = uiCacheGet<DashboardState | null>(DASHBOARD_CACHE_KEY, DASHBOARD_CACHE_TTL_MS);
+    const bootstrapKey = dashboardCacheKey();
+    const cached = uiCacheGet<DashboardState>(bootstrapKey, PHASE1_TTL_CACHE_TTL_MS);
+    uiTraceOpCache({
+      op: DASHBOARD_OP,
+      status: cached ? "HIT" : "MISS",
+      route: "/dashboard",
+      source: "dashboard.on_mount.bootstrap",
+      reason: "ttl_lookup",
+      key: bootstrapKey,
+    });
     let refreshDelayMs = 0;
     if (cached) {
       applyState(cached);
-      refreshDelayMs = 90;
-    } else if (persistent) {
       refreshDelayMs = 90;
     }
     window.setTimeout(() => {
@@ -459,7 +520,7 @@
     }, refreshDelayMs);
     // Emergency perf mode: disable background polling and focus-triggered refreshes.
     // Dashboard refresh stays manual via global refresh button event.
-    const handleGlobalRefresh = () => void loadDashboardState(true);
+    const handleGlobalRefresh = () => void loadDashboardState(true, true);
     const handleWindowResize = () => {
       recomputeRecentPageSize();
       recomputeTopExpensiveVisibleRows();
@@ -495,7 +556,13 @@
             <div>{slot.t1}</div>
             <div>{slot.t2}</div>
           </div>
-          <span class="shrink-0 text-xs text-slate-400 opacity-80">{slot.icon}</span>
+          <span class="inline-flex h-6 w-6 items-center justify-center rounded-md border text-slate-300" style="border-color: rgba(100,116,139,0.35); background-color: rgba(15,23,42,0.35);">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              {#each kpiIconPaths(slot.icon) as d (`${slot.icon}-${d}`)}
+                <path d={d} />
+              {/each}
+            </svg>
+          </span>
         </div>
         <div class="mt-1.5 text-xl font-semibold tracking-tight text-white">{kpiValueByKey(slot.valueKey)}</div>
       </div>
@@ -549,7 +616,7 @@
       {#if breakdownLegend.length > 0}
         {@const segs = donutSegments(breakdownLegend)}
         {#if segs.length > 0}
-          <div class="flex items-center justify-center" style="height: 145px;">
+          <div class="flex items-center justify-center" style="height: 132px;">
             <div class="relative" bind:this={breakdownChartWrap}>
               <svg width="132" height="132" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="40" fill="none" stroke="#21262d" stroke-width={DONUT_STROKE} />
@@ -565,11 +632,11 @@
               {/if}
             </div>
           </div>
-          <div class="mt-2 grid grid-cols-2 justify-center gap-x-5 gap-y-1.5 px-2 text-[11px] text-slate-300">
+          <div class="mx-auto mt-1 flex max-w-[220px] flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[10px] text-slate-300">
             {#each segs as row, idx (`legend-${row.name}-${idx}`)}
-              <div class={`inline-flex items-center gap-2 min-w-0 ${segs.length % 2 === 1 && idx === segs.length - 1 ? "col-span-2 justify-self-center" : "justify-self-start"}`}>
-                <span class="h-2 w-2 rounded-full" style={`background-color: ${row.color};`}></span>
-                <span>{row.name}</span>
+              <div class="inline-flex min-w-0 items-center gap-1.5 rounded-full border px-1.5 py-[2px] leading-none" style="border-color: rgba(100,116,139,0.3);">
+                <span class="h-2 w-2 shrink-0 rounded-full" style={`background-color: ${row.color};`}></span>
+                <span class="truncate">{row.name}</span>
               </div>
             {/each}
           </div>
@@ -651,7 +718,7 @@
                 <tr class="h-9 border-t hover:bg-white/5" style="border-color: rgba(100,116,139,0.18);">
                   <td class="truncate px-3 py-2 text-slate-300" title={req.request_id || ""}>{formatRequestTime(req.time)}</td>
                   <td class="px-3 py-2 text-center"><span class={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${getStatusColor(req.status)}`}>{req.status.includes("Error") ? "Error" : "Success"}</span></td>
-                  <td class="truncate px-3 py-2 text-center text-slate-300" title={requestConnectionProvider(req)}>{requestConnectionProvider(req)}</td>
+                  <td class="truncate px-3 py-2 text-center text-slate-300" title={requestModelTooltip(req)}>{requestConnectionProvider(req)}</td>
                   <td class="px-3 py-2 text-center text-slate-300">{req.latency || "-"}</td>
                   <td class="px-3 py-2 text-center text-slate-300" title={tokenTotalTooltip(req.tokens)}>{req.tokens || "-"}</td>
                   <td class="px-3 py-2 text-center text-slate-300">{req.cost || "-"}</td>
@@ -683,7 +750,7 @@
         {#if topExpensive.length > 0}
           {#each topExpensive.slice(0, topExpensiveVisibleRows) as item (item.id)}
             <div class="flex items-center justify-between border-b py-2 last:border-0" style="border-color: var(--border-subtle);">
-              <div class="min-w-0 pr-2">
+              <div class="min-w-0 pr-2" title={topModelTooltip(item)}>
                 <div class="truncate text-xs text-slate-300">{topPrimary(item)}</div>
                 <div class="truncate text-[10px] text-slate-500/90">{topSecondary(item)}</div>
               </div>
@@ -697,3 +764,4 @@
     </div>
   </div>
 </div>
+

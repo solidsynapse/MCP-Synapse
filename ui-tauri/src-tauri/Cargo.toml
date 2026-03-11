@@ -1,5 +1,5 @@
 [package]
-name = "ui-tauri"
+name = "mcp-synapse"
 version = "0.6.0-rc.1"
 description = "A Tauri App"
 authors = ["you"]

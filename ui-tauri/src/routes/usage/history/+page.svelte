@@ -77,6 +77,11 @@
     return String(modelIdByConnectionId[cid] || "").trim();
   }
 
+  function providerModelTooltip(row: UsageRow): string | undefined {
+    const modelId = resolvedModelId(row);
+    return modelId || undefined;
+  }
+
   function parseTimeMs(ts: string | null) {
     if (!ts) return 0;
     const d = new Date(ts);
@@ -666,7 +671,7 @@
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{formatTimestamp(row.timestamp)}</td>
               <td class="px-4 py-3 max-w-[220px] truncate whitespace-nowrap" style="color: var(--text-muted);" title={row.connection_name ?? "N/A"}>{row.connection_name ?? "N/A"}</td>
               <td class="px-4 py-3 max-w-[140px] truncate whitespace-nowrap font-mono" style="color: var(--text-muted);" title={row.request_id ?? "N/A"}>{row.request_id ?? "N/A"}</td>
-              <td class="px-4 py-3 max-w-[140px] truncate whitespace-nowrap" style="color: var(--text-muted);" title={providerLabel(row.provider)}>{providerLabel(row.provider)}</td>
+              <td class="px-4 py-3 max-w-[140px] truncate whitespace-nowrap" style="color: var(--text-muted);" title={providerModelTooltip(row)}>{providerLabel(row.provider)}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-primary);">{statusLabel(row.status)}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.latency_ms ?? "N/A"}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.tokens_input ?? "N/A"}</td>

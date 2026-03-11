@@ -1,6 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { uiCacheGet, uiCacheSet, uiPersistentCacheGet, uiPersistentCacheSet, uiRunDeduped } from "$lib/ui_session";
+  import {
+    PHASE1_TTL_CACHE_OPS,
+    PHASE1_TTL_CACHE_TTL_MS,
+    uiBuildOpCacheKey,
+    uiCacheGet,
+    uiCacheSet,
+    uiInvalidateOpCaches,
+    uiRunDeduped,
+    uiTraceOpCache,
+  } from "$lib/ui_session";
 
   type Connection = {
     id: string;
@@ -106,9 +115,10 @@
 
   let connections = $state<Connection[]>([]);
   let pageStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
-  const CONNECTIONS_CACHE_KEY = "connections.list";
-  const CONNECTIONS_CACHE_TTL_MS = 60000;
-  const CONNECTIONS_PERSISTENT_CACHE_TTL_MS = 2 * 60 * 1000;
+  const CONNECTIONS_OP = "connections.list";
+  const CONNECTIONS_COPY_CONFIG_OP = "connections.copy_config";
+  const CONNECTIONS_SCHEMA_HINT_OP = "connections.schema_hint";
+  const CONNECTIONS_INTERACTION_TTL_MS = 5000;
   let busyById = $state<Record<string, boolean>>({});
 
   let query = $state("");
@@ -161,6 +171,9 @@
   let newWizardNoticeKind = $state<BannerKind>("idle");
   let newWizardNoticeText = $state("");
   let newWizardDebugDetail = $state("");
+  let schemaHintRequestSeq = 0;
+  let schemaHintLoadingProviderId = "";
+  const copyConfigInFlight = new Map<string, Promise<string>>();
   function formatErrors(errors: string[] | undefined) {
     if (!errors || errors.length === 0) return "Unknown error.";
     return errors.join("; ");
@@ -308,11 +321,13 @@
   }
 
   async function selectProvider(id: ProviderId) {
+    const sameProvider = id === newWizardProvider;
     newWizardProvider = id;
     providerQuery = providerLabel(id);
     providerMenuOpen = false;
     providerHighlightIndex = -1;
-    await loadNewWizardSchemaHint(id);
+    if (sameProvider && newWizardSchemaStatus === "ready" && newWizardSchemaHint) return;
+    await loadNewWizardSchemaHint(id, "new_provider_select");
   }
 
   function setNewWizardNotice(kind: BannerKind, text: string, debugDetail = "") {
@@ -567,12 +582,57 @@
     }
   }
 
-  async function loadNewWizardSchemaHint(providerId: ProviderId) {
+  async function loadNewWizardSchemaHint(providerId: ProviderId, source: "edit_open" | "new_provider_select") {
+    const providerKey = String(providerId || "").trim().toLowerCase();
+    if (!providerKey) return;
+    if (schemaHintLoadingProviderId === providerKey) {
+      return;
+    }
+    const requestSeq = ++schemaHintRequestSeq;
+    schemaHintLoadingProviderId = providerKey;
     newWizardSchemaStatus = "loading";
     newWizardSchemaHint = null;
     clearNewWizardNotice();
+    const cacheKey = uiBuildOpCacheKey(
+      CONNECTIONS_SCHEMA_HINT_OP,
+      { op: CONNECTIONS_SCHEMA_HINT_OP, provider_id: providerId },
+      { route: "/connections", flow: "new_wizard" },
+    );
     try {
-      const result = await dispatchInvoke({ op: "connections.schema_hint", provider_id: providerId });
+      const cached = uiCacheGet<SchemaHint>(cacheKey, CONNECTIONS_INTERACTION_TTL_MS);
+      uiTraceOpCache({
+        op: CONNECTIONS_SCHEMA_HINT_OP,
+        status: cached ? "HIT" : "MISS",
+        route: "/connections",
+        source,
+        reason: "interaction_ttl_lookup",
+        key: cacheKey,
+      });
+      if (cached) {
+        if (requestSeq !== schemaHintRequestSeq) return;
+        newWizardSchemaHint = cached;
+        newWizardSchemaStatus = "ready";
+        const defaults = cached.suggested_defaults ?? {};
+        const next = { ...newWizardValues };
+        for (const [k, v] of Object.entries(defaults)) {
+          const existing = String(next[k] ?? "").trim();
+          if (!existing) next[k] = String(v ?? "");
+        }
+        newWizardValues = next;
+        clearNewWizardNotice();
+        return;
+      }
+
+      const result = await uiRunDeduped(
+        cacheKey,
+        async () =>
+          await dispatchInvoke({
+            op: CONNECTIONS_SCHEMA_HINT_OP,
+            provider_id: providerId,
+            _trace_source: source,
+          }),
+      );
+      if (requestSeq !== schemaHintRequestSeq) return;
       const normalized = normalizeSchemaHint(result);
       if (!result.ok && result.error?.code === "desktop_required") {
         newWizardSchemaStatus = "idle";
@@ -585,6 +645,7 @@
         if (hint) {
           newWizardSchemaHint = hint;
           newWizardSchemaStatus = "ready";
+          uiCacheSet(cacheKey, hint);
           const defaults = hint.suggested_defaults ?? {};
           const next = { ...newWizardValues };
           for (const [k, v] of Object.entries(defaults)) {
@@ -603,6 +664,10 @@
     } catch (err: any) {
       newWizardSchemaStatus = "error";
       setNewWizardNotice("danger", `Schema hint failed: ${err?.message || String(err)}`);
+    } finally {
+      if (schemaHintLoadingProviderId === providerKey) {
+        schemaHintLoadingProviderId = "";
+      }
     }
   }
 
@@ -647,7 +712,7 @@
       required: false,
       kind: "text",
       placeholder: "C:\\path\\to\\credentials.json",
-      help: "Optional path to a local credentials file used by the core runtime.",
+      help: "Path to a local credentials file used by the core runtime.",
       section: "advanced",
     },
   ];
@@ -738,19 +803,51 @@
     }) as ConnectionsResponse;
   }
 
-  async function refreshConnections() {
+  function connectionsActiveFilters() {
+    return {
+      query: String(query || "").trim().toLowerCase(),
+      status: statusFilter,
+    };
+  }
+
+  function connectionsCacheKey() {
+    return uiBuildOpCacheKey(CONNECTIONS_OP, { op: CONNECTIONS_OP }, connectionsActiveFilters());
+  }
+
+  async function refreshConnections(forceRefresh = false, source = "connections.refresh") {
     if (pageStatus === "idle" && connections.length === 0) {
       pageStatus = "loading";
     }
     setBanner("idle", "");
+    const cacheKey = connectionsCacheKey();
+    if (forceRefresh) {
+      uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+        reason: "global_refresh_event",
+        source,
+        route: "/connections",
+      });
+    }
     try {
-      const result = await uiRunDeduped(CONNECTIONS_CACHE_KEY, async () => await dispatchInvoke({ op: "connections.list" }));
+      const cached = uiCacheGet<Connection[]>(cacheKey, PHASE1_TTL_CACHE_TTL_MS);
+      uiTraceOpCache({
+        op: CONNECTIONS_OP,
+        status: cached ? "HIT" : "MISS",
+        route: "/connections",
+        source,
+        reason: "ttl_lookup",
+        key: cacheKey,
+      });
+      if (cached) {
+        connections = cached;
+        pageStatus = "ready";
+        return;
+      }
+      const result = await uiRunDeduped(cacheKey, async () => await dispatchInvoke({ op: CONNECTIONS_OP }));
 
       if (result.ok) {
         const next = toUiConnections(result.connections ?? []);
         connections = next;
-        uiCacheSet(CONNECTIONS_CACHE_KEY, next);
-        uiPersistentCacheSet(CONNECTIONS_CACHE_KEY, next);
+        uiCacheSet(cacheKey, next);
         pageStatus = "ready";
         return;
       }
@@ -772,7 +869,12 @@
       const op = current?.status === "running" ? "connections.stop" : "connections.start";
       const result = await dispatchInvoke({ op, connection_id: connectionId });
       if (result.ok) {
-        await refreshConnections();
+        uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+          reason: op === "connections.stop" ? "connections.stop_success" : "connections.start_success",
+          source: "connections.toggle",
+          route: "/connections",
+        });
+        await refreshConnections(false, "connections.toggle.after_success");
         setBanner("success", op === "connections.stop" ? "Connection stopped." : "Connection started.");
       } else {
         const detail = buildCanonicalErrorDetail(result);
@@ -804,10 +906,11 @@
   }
 
   async function copyConnectionConfig(connectionId: string) {
+    if (busyById[connectionId] === true) return;
     busyById = { ...busyById, [connectionId]: true };
     setBanner("idle", "");
 
-    const text = await fetchConnectionConfig(connectionId, false);
+    const text = await fetchConnectionConfig(connectionId, false, "copy_button");
     if (!text) return;
 
     try {
@@ -830,10 +933,11 @@
   }
 
   async function copyConnectionDebugConfig(connectionId: string) {
+    if (busyById[connectionId] === true) return;
     busyById = { ...busyById, [connectionId]: true };
     setBanner("idle", "");
 
-    const text = await fetchConnectionConfig(connectionId, true);
+    const text = await fetchConnectionConfig(connectionId, true, "copy_debug");
     if (!text) return;
 
     try {
@@ -863,7 +967,9 @@
   async function openDetails(connectionId: string) {
     detailsId = connectionId;
     detailsOpen = true;
-    const text = await fetchConnectionConfig(connectionId, false);
+    const existing = connections.find((connection) => connection.id === connectionId);
+    if (existing?.configText) return;
+    const text = await fetchConnectionConfig(connectionId, false, "details_open");
     if (text) {
       connections = connections.map((connection) =>
         connection.id === connectionId ? { ...connection, configText: text } : connection
@@ -886,18 +992,64 @@
     deleteConfirmId = null;
   }
 
-  async function fetchConnectionConfig(connectionId: string, verbose: boolean) {
-    try {
-      const result = await dispatchInvoke({ op: "connections.copy_config", connection_id: connectionId, verbose });
-      if (result.ok && result.config_text) {
-        return result.config_text;
-      }
-      const detail = buildCanonicalErrorDetail(result);
-      setBanner("danger", `Copy Config failed: ${detail.reason}`, canonicalErrorDetailText(detail));
-    } catch (err: any) {
-      setBanner("danger", `Copy Config failed: ${err?.message || String(err)}`);
+  async function fetchConnectionConfig(
+    connectionId: string,
+    verbose: boolean,
+    source: "details_open" | "copy_button" | "copy_debug",
+  ) {
+    const inFlightKey = `${String(connectionId || "").trim()}|${verbose ? "1" : "0"}`;
+    const inFlight = copyConfigInFlight.get(inFlightKey);
+    if (inFlight) {
+      return await inFlight;
     }
-    return "";
+
+    const cacheKey = uiBuildOpCacheKey(
+      CONNECTIONS_COPY_CONFIG_OP,
+      { op: CONNECTIONS_COPY_CONFIG_OP, connection_id: connectionId, verbose },
+      { route: "/connections", flow: "details_copy" },
+    );
+    const cached = uiCacheGet<string>(cacheKey, CONNECTIONS_INTERACTION_TTL_MS);
+    uiTraceOpCache({
+      op: CONNECTIONS_COPY_CONFIG_OP,
+      status: cached ? "HIT" : "MISS",
+      route: "/connections",
+      source,
+      reason: "interaction_ttl_lookup",
+      key: cacheKey,
+    });
+    if (cached) return cached;
+    const request = (async () => {
+      try {
+        const result = await uiRunDeduped(
+          cacheKey,
+          async () =>
+            await dispatchInvoke({
+              op: CONNECTIONS_COPY_CONFIG_OP,
+              connection_id: connectionId,
+              verbose,
+              _trace_source: source,
+            }),
+        );
+        if (result.ok && result.config_text) {
+          uiCacheSet(cacheKey, result.config_text);
+          return result.config_text;
+        }
+        const detail = buildCanonicalErrorDetail(result);
+        setBanner("danger", `Copy Config failed: ${detail.reason}`, canonicalErrorDetailText(detail));
+      } catch (err: any) {
+        setBanner("danger", `Copy Config failed: ${err?.message || String(err)}`);
+      }
+      return "";
+    })();
+
+    copyConfigInFlight.set(inFlightKey, request);
+    try {
+      return await request;
+    } finally {
+      if (copyConfigInFlight.get(inFlightKey) === request) {
+        copyConfigInFlight.delete(inFlightKey);
+      }
+    }
   }
 
   async function confirmDelete() {
@@ -909,7 +1061,12 @@
     try {
       const result = await dispatchInvoke({ op: "connections.delete", connection_id: id });
       if (result.ok) {
-        await refreshConnections();
+        uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+          reason: "connections.delete_success",
+          source: "connections.delete",
+          route: "/connections",
+        });
+        await refreshConnections(false, "connections.delete.after_success");
         setBanner("success", "Connection deleted.");
       } else {
         const detail = buildCanonicalErrorDetail(result);
@@ -1168,6 +1325,11 @@
       const result = await dispatchInvoke(payload);
 
       if (result.ok) {
+        uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+          reason: wizardMode === "edit" ? "connections.update_success" : "connections.create_success",
+          source: "connections.submit",
+          route: "/connections",
+        });
         connections = toUiConnections(result.connections ?? []);
         pageStatus = "ready";
         closeNewWizard();
@@ -1240,12 +1402,12 @@
       };
     }
     clearNewWizardNotice();
-    await loadNewWizardSchemaHint(target.providerId);
+    await loadNewWizardSchemaHint(target.providerId, "edit_open");
   }
 
   onMount(() => {
     const onGlobalRefresh = () => {
-      void refreshConnections();
+      void refreshConnections(true, "connections.global_refresh_event");
     };
     const onShortcutNewConnection = (event: Event) => {
       openNewWizard();
@@ -1282,24 +1444,24 @@
     window.addEventListener("synapse:shortcut-primary-action", onShortcutPrimaryAction as EventListener);
     window.addEventListener("synapse:shortcut-escape", onShortcutEscape as EventListener);
 
-    const persistent = uiPersistentCacheGet<Connection[]>(CONNECTIONS_CACHE_KEY, CONNECTIONS_PERSISTENT_CACHE_TTL_MS);
-    if (persistent) {
-      connections = persistent;
-      pageStatus = "ready";
-    }
-    const cached = uiCacheGet<Connection[]>(CONNECTIONS_CACHE_KEY, CONNECTIONS_CACHE_TTL_MS);
+    const bootstrapKey = connectionsCacheKey();
+    const cached = uiCacheGet<Connection[]>(bootstrapKey, PHASE1_TTL_CACHE_TTL_MS);
+    uiTraceOpCache({
+      op: CONNECTIONS_OP,
+      status: cached ? "HIT" : "MISS",
+      route: "/connections",
+      source: "connections.on_mount.bootstrap",
+      reason: "ttl_lookup",
+      key: bootstrapKey,
+    });
     if (cached) {
       connections = cached;
       pageStatus = "ready";
       window.setTimeout(() => {
-        void refreshConnections();
-      }, 90);
-    } else if (persistent) {
-      window.setTimeout(() => {
-        void refreshConnections();
+        void refreshConnections(false, "connections.on_mount.warm_followup");
       }, 90);
     } else {
-      void refreshConnections();
+      void refreshConnections(false, "connections.on_mount.initial_load");
     }
     return () => {
       window.removeEventListener("synapse:global-refresh", onGlobalRefresh as EventListener);

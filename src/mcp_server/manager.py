@@ -423,8 +423,8 @@ class ServerManager:
             return {"ok": True, "errors": [], "warnings": [], "data": {"secret": secret}}
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)], "warnings": [], "data": {}}
-        except Exception as exc:
-            return {"ok": False, "errors": [f"Vault storage unavailable: {exc}"], "warnings": [], "data": {}}
+        except Exception:
+            return {"ok": False, "errors": ["Vault storage unavailable"], "warnings": [], "data": {}}
 
     def vault_delete(self, params: dict) -> dict[str, object]:
         entry_id = str(params.get("entry_id") or "").strip()

@@ -1545,3 +1545,98 @@ explicit banner preserved; ui check PASS).
   - Evidence required:
     - `docs\evidence\V10_RC_EXT_FINAL_<timestamp>\`
     - `commands_ran.txt`, `anchor_proofs.txt`, `ssot_core.sha256.before.txt`, `ssot_core.sha256.after.txt`, `summary.txt`, `test.txt`
+
+- SSOT Sync Checkpoint (2026-03-08, no-new-decision, minimal alignment)
+  - Closed slices (record-only):
+    - Blocker-1 no-console hotfix packaged closure (`RC_EXT_BLOCKER1_NO_CONSOLE_HOTFIX_20260308-064011`, `RC_EXT_BLOCKER1_CHOKEPOINT_COMPLETE_20260308-070019`).
+    - Packaging/meta closure snapshot (branded naming artifacts + MSI numeric override path + packaged build pass) (`PAK_01_MSI_OVERRIDE_FIX_20260308-061847`, `PAK_01_POST_BUILD_SMOKE_20260308-062840`).
+    - Perf reclassification lock + TTL positioning (`V12_TTL_CACHE_HOTFIX_20260308-074535`).
+    - Phase-2 worker track:
+      - V16 spike PASS -> worth integrating (`V16_PHASE2_WORKER_SPIKE_20260308-090923`)
+      - V17 minimum integration PASS -> default OFF + flag-gated + 3-op whitelist + mandatory fallback (`V17_PHASE2_MIN_INTEGRATION_20260308-101000`)
+  - Remaining release-blocking technical gate (OPEN; must PASS for RC-ready):
+    - [ ] Worker OFF revalidation
+    - [ ] Worker ON revalidation
+    - [ ] Fallback revalidation (timeout/error/invalid response -> same-request legacy path)
+    - [ ] Packaged clean first-run stability
+    - [ ] Packaged no-dispatch-regression smoke
+  - Non-blocking polish/meta closeout (OPEN; release-prep backlog):
+    - [ ] Icon/branding packaged consistency check
+    - [ ] Perf/debug marker visibility hygiene check
+    - [ ] Observability hygiene check (log growth/retention discipline)
+    - [ ] Final evidence/release-note organization pass
+
+- SSOT Sync Checkpoint (2026-03-09, performance closeout + ordered next phase, no-new-decision)
+  - Closed performance gates (record-only):
+    - [x] Main navigation perf gate CLOSED (`docs\evidence\V34_WAVE1_PERF_EXPANSION_20260308-233749\`)
+    - [x] Persona Lite -> Optimizations transition lag CLOSED (`docs\evidence\V37_PERSONA_ROUTE_LEAVE_COALESCE_20260309-002548\`)
+    - [x] Lifecycle mini-slice CLOSED (`docs\evidence\V44_LIFECYCLE_MINI_SLICE_20260309-220452\`)
+      - startup_ready_ms ~1.0-1.1s
+      - shutdown close_to_exit_ms_estimate ~1.52s
+    - [x] Packaging install-root tmp-path blocker CLOSED (`docs\evidence\V43_INSTALL_LOCATION_HARD_CLOSURE_20260309-211154\`)
+    - [x] Overall performance gates PASS (release-complete enough for current lane)
+  - Deferred items (OPEN, non-blocking):
+    - [ ] Connections detail interaction rough edge (Wave-2A residual)
+    - [ ] Worker-ON steady RAM < 250 MB future optimization slice
+  - Ordered next phase (immediate sequence lock):
+    1) post-perf cleanup/hardening
+    2) security review / mini pentest
+    3) release prep / known issues / worker launch stance
+    4) then first future optimization slice: worker-on memory reduction below 250 MB
+
+- SSOT Sync Checkpoint (2026-03-09, release-prep runtime stance realignment)
+  - Scope: release-prep stance update only (no perf reopening, no architecture rewrite).
+  - User-facing runtime stance:
+    - [x] Dual runtime mode framing removed from release stance.
+    - [x] Worker-primary is single default installed runtime profile.
+    - [x] Legacy subprocess remains internal fallback safety only.
+  - Active release-prep checks (single-profile model):
+    - [ ] Default packaged worker-primary smoke (whitelist takeover + scope guard).
+    - [ ] Internal fallback safety smoke (forced timeout/error/invalid response -> same-request legacy success).
+    - [ ] Docs/release-note/support wording sync (no user-facing OFF/ON runtime mode guidance).
+  - Deferred items (unchanged):
+    - [ ] Connections detail interaction rough edge (Wave-2A residual).
+    - [ ] Worker-ON steady RAM < 250 MB future optimization slice.
+
+- SSOT Sync Checkpoint (2026-03-10, security closeout packaging)
+  - Security lane closure (narrow scope, no perf/runtime reopening):
+    - [x] Security mini-gate PASS (`docs\evidence\V50_RELEASE_SECURITY_MINI_GATE_20260309-234645\`)
+    - [x] Narrow security polish PASS (`docs\evidence\V52_NARROW_SECURITY_POLISH_PATCH_20260310-000816\`)
+      - [x] unknown-op / invalid-request semantic hardening
+      - [x] vault plaintext-read related generic exception hygiene
+  - Security release-close result:
+    - [x] No release-blocking finding in scoped security lane
+  - Security deferred (single carry-forward item):
+    - [ ] `MCP_SYNAPSE_PYTHON` boundary tightening
+
+- SSOT Sync Checkpoint (2026-03-11, release runway docs + sweep)
+  - Step 1 (release package prep):
+    - [x] Fresh package build, artifact inventory, SHA256 capture (`docs\evidence\V57_RELEASE_PACKAGE_PREP_20260310-022825\`)
+  - Step 2 (narrow UI polish progression):
+    - [x] Step 2A first-two-surfaces polish (`docs\evidence\V58_STEP2A_UI_MINI_POLISH_2SURFACES_20260311-063054\`, `docs\evidence\V59_STEP2A_DASHBOARD_FINAL_POLISH_20260311-064604\`)
+    - [x] Step 2B Connections/Usage narrow polish (`docs\evidence\V60_STEP2B_UI_POLISH_CONNECTIONS_USAGE_METADATA_20260311-070451\`)
+    - [x] Step 2C Settings + Help finalize (`docs\evidence\V61_STEP2C_SETTINGS_HELP_FINALIZE_20260311-074026\`, `docs\evidence\V62_STEP2C_HELP_LINK_HOTFIX_20260311-074647\`, `docs\evidence\V63_HELP_LINK_EXECUTE_SAFE_20260311-075115\`)
+    - [x] Step 2D installer/icon closure patch (`docs\evidence\V65_STEP2D_CLOSURE_INSTALL_ROOT_ICON_20260311-090522\`)
+    - [x] Step 2E desktop UX hardening patch (`docs\evidence\V66_STEP2E_DESKTOP_UX_HARDENING_20260311-093444\`)
+  - Step 3 (minimum release docs finalize):
+    - [x] `docs/release/releases/v0.6.0-rc.1/RELEASE_NOTES.md`
+    - [x] `docs/release/releases/v0.6.0-rc.1/WHAT_CHANGED.md`
+    - [x] `docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt`
+    - [x] `docs/release/releases/v0.6.0-rc.1/KNOWN_ISSUES.md`
+    - [x] `docs/release/releases/v0.6.0-rc.1/INSTALL_RUN_NOTES.md`
+    - [x] `docs/release/releases/v0.6.0-rc.1/TRUST_SECURITY.md`
+    - [x] `docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md` retained
+  - Step 4 (final SSOT sweep):
+    - [x] DECISIONS/STATUS/TASKS sync checkpoint recorded
+    - [x] single-runtime release stance kept consistent in SSOT + release docs
+  - Step 5 (RC decision gate):
+    - [x] RC final decision
+    - Gate status: RC READY after consolidated final preflight chain:
+      - `docs\evidence\V68_FINAL_PACKAGED_SMOKE_TRUTH_RC_20260311-103015\`
+      - `docs\evidence\V69_IDENTITY_PARITY_CLOSURE_20260311-104200\`
+      - `docs\evidence\V70_SPEED_COMPARE_WORKER_ON_OFF_20260311-110543\`
+      - `docs\evidence\V71_RELEASE_CHECKSUM_UPDATE_20260311-111229\`
+  - Deferred carry-forward (unchanged):
+    - [ ] Connections detail interaction rough edge (Wave-2A residual)
+    - [ ] Worker-ON steady RAM < 250 MB future optimization slice
+    - [ ] `MCP_SYNAPSE_PYTHON` boundary tightening

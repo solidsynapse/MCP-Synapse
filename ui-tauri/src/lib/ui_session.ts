@@ -85,6 +85,92 @@ type CacheEntry = { at: number; value: unknown };
 const responseCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<unknown>>();
 const PERSISTENT_CACHE_PREFIX = "synapse.cache.";
+const PHASE1_TTL_CACHE_KEY_PREFIX = "opcache::";
+
+export const PHASE1_TTL_CACHE_TTL_MS = 5 * 1000;
+export const PHASE1_TTL_CACHE_OPS = ["dashboard.get_state", "usage.recent", "connections.list"] as const;
+const OP_CACHE_TRACE_BUFFER_KEY = "__SYNAPSE_OP_CACHE_TRACE__";
+const OP_CACHE_TRACE_MAX = 500;
+
+type OpCacheTraceStatus = "HIT" | "MISS" | "INVALIDATE";
+type OpCacheTraceEvent = {
+  op: string;
+  status: OpCacheTraceStatus;
+  route: string;
+  source: string;
+  reason?: string;
+  key?: string;
+};
+
+function shouldTraceOp(op: string): boolean {
+  return (PHASE1_TTL_CACHE_OPS as readonly string[]).includes(String(op || "").trim());
+}
+
+function getOpCacheTraceBuffer(): Record<string, unknown>[] | null {
+  if (typeof window === "undefined") return null;
+  const host = window as unknown as Record<string, unknown>;
+  const current = host[OP_CACHE_TRACE_BUFFER_KEY];
+  if (Array.isArray(current)) return current as Record<string, unknown>[];
+  const next: Record<string, unknown>[] = [];
+  host[OP_CACHE_TRACE_BUFFER_KEY] = next;
+  return next;
+}
+
+let traceInvokePromise: Promise<((command: string, args?: Record<string, unknown>) => Promise<unknown>) | null> | null = null;
+
+async function getTraceInvoke() {
+  if (typeof window === "undefined") return null;
+  const tauriGlobal = (window as any).__TAURI__ ?? (window as any).__TAURI_INTERNALS__;
+  if (!tauriGlobal) return null;
+  if (!traceInvokePromise) {
+    traceInvokePromise = import("@tauri-apps/api/core")
+      .then((mod) => mod.invoke)
+      .catch(() => null);
+  }
+  return traceInvokePromise;
+}
+
+async function writeTraceRowToFile(row: Record<string, unknown>) {
+  const invoke = await getTraceInvoke();
+  if (!invoke) return;
+  try {
+    await invoke("ui_append_frontend_trace_v1", { row });
+  } catch {
+    // ignore trace sink failures
+  }
+}
+
+export function uiTraceOpCache(event: OpCacheTraceEvent): void {
+  const op = String(event.op || "").trim();
+  if (!shouldTraceOp(op)) return;
+  const row: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    op,
+    status: event.status,
+    route: String(event.route || "").trim() || "unknown",
+    source: String(event.source || "").trim() || "unknown",
+    reason: String(event.reason || "").trim() || undefined,
+    key: String(event.key || "").trim() || undefined,
+  };
+  const traceBuffer = getOpCacheTraceBuffer();
+  if (traceBuffer) {
+    traceBuffer.push(row);
+    if (traceBuffer.length > OP_CACHE_TRACE_MAX) {
+      traceBuffer.splice(0, traceBuffer.length - OP_CACHE_TRACE_MAX);
+    }
+  }
+  if (typeof console !== "undefined" && typeof console.info === "function") {
+    console.info("[synapse.opcache]", row);
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("synapse:opcache-trace", {
+        detail: row,
+      }),
+    );
+  }
+  void writeTraceRowToFile(row);
+}
 
 function getPersistentStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -203,4 +289,82 @@ export function uiRunDeduped<T>(key: string, run: () => Promise<T>): Promise<T> 
   });
   inFlight.set(key, pending as Promise<unknown>);
   return pending;
+}
+
+function normalizeCachePart(value: unknown): unknown {
+  if (value === null) return null;
+  const valueType = typeof value;
+  if (valueType === "string" || valueType === "number" || valueType === "boolean") return value;
+  if (Array.isArray(value)) return value.map((item) => normalizeCachePart(item));
+  if (valueType === "object") {
+    const src = value as Record<string, unknown>;
+    const dst: Record<string, unknown> = {};
+    const keys = Object.keys(src).sort((a, b) => a.localeCompare(b));
+    for (const key of keys) {
+      dst[key] = normalizeCachePart(src[key]);
+    }
+    return dst;
+  }
+  return String(value);
+}
+
+function stableCachePart(value: unknown): string {
+  return JSON.stringify(normalizeCachePart(value));
+}
+
+export function uiBuildOpCacheKey(
+  op: string,
+  promptPayload: Record<string, unknown>,
+  activeFilters: Record<string, unknown> = {},
+): string {
+  const normalizedOp = String(op || "").trim();
+  return `${PHASE1_TTL_CACHE_KEY_PREFIX}${normalizedOp}|payload=${stableCachePart(promptPayload)}|filters=${stableCachePart(activeFilters)}`;
+}
+
+export function uiInvalidateOpCaches(
+  ops: readonly string[],
+  meta: { reason?: string; route?: string; source?: string } = {},
+): void {
+  if (!Array.isArray(ops) || ops.length === 0) return;
+  for (const op of ops) {
+    uiTraceOpCache({
+      op: String(op || "").trim(),
+      status: "INVALIDATE",
+      route: String(meta.route || "").trim() || "unknown",
+      source: String(meta.source || "").trim() || "unknown",
+      reason: String(meta.reason || "").trim() || "cache_invalidate",
+    });
+  }
+  const prefixes = ops
+    .map((op) => `${PHASE1_TTL_CACHE_KEY_PREFIX}${String(op || "").trim()}|`)
+    .filter((prefix) => prefix.length > PHASE1_TTL_CACHE_KEY_PREFIX.length);
+  if (prefixes.length === 0) return;
+
+  const shouldDelete = (key: string): boolean => prefixes.some((prefix) => key.startsWith(prefix));
+
+  for (const key of Array.from(responseCache.keys())) {
+    if (shouldDelete(key)) responseCache.delete(key);
+  }
+  for (const key of Array.from(inFlight.keys())) {
+    if (shouldDelete(key)) inFlight.delete(key);
+  }
+
+  const storage = getPersistentStorage();
+  if (!storage) return;
+  const storagePrefixes = prefixes.map((prefix) => `${PERSISTENT_CACHE_PREFIX}${prefix}`);
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const storageKey = storage.key(i);
+    if (!storageKey) continue;
+    if (storagePrefixes.some((prefix) => storageKey.startsWith(prefix))) {
+      keysToRemove.push(storageKey);
+    }
+  }
+  for (const key of keysToRemove) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // ignore storage cleanup failures
+    }
+  }
 }

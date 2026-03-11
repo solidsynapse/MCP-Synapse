@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 import sys
@@ -7,6 +8,16 @@ from pathlib import Path
 
 def _repo_root_from_tools_dir() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _internal_debug_observability_enabled() -> bool:
+    raw = str(os.environ.get("MCP_SYNAPSE_INTERNAL_DEBUG_OBS", "")).strip().strip('"').strip("'").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        return int(raw) > 0
+    except Exception:
+        return False
 
 
 def _ok(text: str | None) -> dict:
@@ -38,6 +49,49 @@ def _write_payload(payload: dict) -> None:
         except Exception:
             pass
         sys.stdout.write(safe_text)
+
+
+def _append_jsonl(path: Path, row: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fp:
+            fp.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        # observability must not break request path
+        pass
+
+
+def _write_backend_ingress_log(agent_id: str, prompt: str) -> None:
+    # Fail-open: observability must never break the request path.
+    if not _internal_debug_observability_enabled():
+        return
+    try:
+        prompt_text = str(prompt or "")
+        op_value: str | None = None
+        prompt_kind = "text"
+        try:
+            parsed = _maybe_parse_json_prompt(prompt_text)
+            if isinstance(parsed, dict):
+                prompt_kind = "json"
+                op_raw = parsed.get("op")
+                if isinstance(op_raw, str) and op_raw.strip():
+                    op_value = op_raw.strip()
+        except Exception:
+            if prompt_text.strip().startswith("{"):
+                prompt_kind = "invalid_json_candidate"
+        root = Path(_repo_root_from_tools_dir())
+        log_file = root.joinpath("data", "observability", "backend_dispatch_ingress.jsonl")
+        _append_jsonl(
+            log_file,
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "agent_id": str(agent_id or ""),
+                "op": op_value,
+                "prompt_kind": prompt_kind,
+            },
+        )
+    except Exception:
+        pass
 
 
 def _connections_response(result: dict) -> dict:
@@ -340,6 +394,8 @@ def _dispatch_op(payload: dict) -> dict:
 
     payload = _normalize_provider_keys(payload)
     op = str(payload.get("op") or "")
+    if not op:
+        return _fail("invalid_request", "op is required")
     cfg = ConfigManager()
 
     if op == "connections.list":
@@ -550,16 +606,17 @@ def _dispatch_op(payload: dict) -> dict:
         mgr = ServerManager()
         return _settings_state_response(mgr.set_settings_state(payload))
 
-    bridge_id = payload.get("bridge_id")
-    if not isinstance(bridge_id, str) or not bridge_id.strip():
-        return _fail("invalid_request", "bridge_id is required")
-    bridge_id = bridge_id.strip()
+    if op == "bridges.toggle" or op == "bridges.test" or op == "bridges.config":
+        bridge_id = payload.get("bridge_id")
+        if not isinstance(bridge_id, str) or not bridge_id.strip():
+            return _fail("invalid_request", "bridge_id is required")
+        bridge_id = bridge_id.strip()
 
-    agent = cfg.get_agent(bridge_id)
-    if not isinstance(agent, dict):
-        return _fail("bridge_not_found", "bridge not found")
+        agent = cfg.get_agent(bridge_id)
+        if not isinstance(agent, dict):
+            return _fail("bridge_not_found", "bridge not found")
 
-    mgr = ServerManager()
+        mgr = ServerManager()
 
     if op == "bridges.toggle":
         action = str(payload.get("action") or "toggle")
@@ -653,6 +710,8 @@ def main() -> int:
             return 2
     else:
         prompt_text = str(args.prompt)
+
+    _write_backend_ingress_log(agent_id=args.agent_id, prompt=prompt_text)
 
     try:
         payload = _dispatch(agent_id=args.agent_id, prompt=prompt_text)

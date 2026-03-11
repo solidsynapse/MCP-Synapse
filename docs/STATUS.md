@@ -78,8 +78,101 @@ docs\evidence\P5_9_RUNTIME_ENCODING_CLOSURE_AUDIT_20260227-124419
   - Remaining open set (post-A10 reconciliation): Bedrock provider allowlist/quota stays external BLOCKER; network gate matrix (VertexAI/OpenAI/Azure/Ollama/HF) + persona enforcement + copy-config regression + Usage/Budget rails (V1.1 LLM cost gate) are treated as PASS on current evidence; RC-EXT final release hygiene pack is OPEN (health alerts calibration, shortcuts baseline with current-surface scope, security hygiene, debuggability minimum, packaging/versioning readiness). Usage History "View Details" modal is not a current surface and is tracked as future enhancement.
   - First release scope lock (current truth): Bedrock is blocked and de-scoped/hidden from first-release surface until quota/allowlist unblock. Re-enable path is fixed and narrow: unhide provider in UI -> run provider regression smoke -> reconfirm usage/dashboard parity.
   - Carry-forward (non-blocking for current gate): Usage Summary KPI cards currently stay global under active filters while table/export filters behave correctly; disclosure parity (Summary) + residual right-edge scrollbar polish deferred to final release UI pass; post-RC P1 perf smoke remains deferred; full English documentation pack is deferred until technical freeze is completed (technical-first sequencing lock).
-  - Versioning policy lock (D-037): current line is `v0.6.x (Early Access)`; milestone progression is `0.7` (RC-EXT + packaging), `0.8` (hardening/security+perf baseline/docs), `0.9` (domain-agnostic migration-readiness), `1.0` (domain-agnostic execution-fabric completion). Logo/app icon freeze remains coupled to packaging/versioning closure.
-  - Licensing/distribution lock (D-038): visible-source freemium + official-channel control is active; unsigned release mode is allowed only as a temporary phase with mandatory release integrity set (tag + SHA256 + changelog/"what changed" + explicit unsigned warning). Code signing is scheduled for `0.9.x -> 1.0.0`.
+- Versioning policy lock (D-037): current line is `v0.6.x (Early Access)`; milestone progression is `0.7` (RC-EXT + packaging), `0.8` (hardening/security+perf baseline/docs), `0.9` (domain-agnostic migration-readiness), `1.0` (domain-agnostic execution-fabric completion). Logo/app icon freeze remains coupled to packaging/versioning closure.
+- Licensing/distribution lock (D-038): visible-source freemium + official-channel control is active; unsigned release mode is allowed only as a temporary phase with mandatory release integrity set (tag + SHA256 + changelog/"what changed" + explicit unsigned warning). Code signing is scheduled for `0.9.x -> 1.0.0`.
+- SSOT checkpoint (2026-03-08; minimal sync, no scope expansion):
+  - Blocker-1 CLOSED: visible CMD flash is treated as closed on packaged path after no-console hotfix + revalidation (`RC_EXT_BLOCKER1_NO_CONSOLE_HOTFIX_20260308-064011`, `RC_EXT_BLOCKER1_CHOKEPOINT_COMPLETE_20260308-070019`).
+  - Packaging/meta CLOSED set (current truth): branded product naming reflected in produced installer artifact names; MSI numeric override path confirmed; packaged build generation PASS (`PAK_01_MSI_OVERRIDE_FIX_20260308-061847`, `PAK_01_POST_BUILD_SMOKE_20260308-062840`).
+  - Perf classification lock: direct backend latency is route-independent in ~4.4s band; dominant cost is per-call Python subprocess/import/bootstrap overhead; TTL cache remains UX mitigation only (`V12_TTL_CACHE_HOTFIX_20260308-074535`).
+  - Phase-2 worker track:
+    - V16 decision slice PASS: worker spike worth integrating (`V16_PHASE2_WORKER_SPIKE_20260308-090923`).
+    - V17 minimum integration PASS: default OFF flag-gated worker path, strict 3-op whitelist, mandatory immediate legacy fallback on worker timeout/error/invalid response (`V17_PHASE2_MIN_INTEGRATION_20260308-101000`).
+  - Remaining release-blocking technical gates (OPEN):
+    1) Worker OFF revalidation
+    2) Worker ON revalidation
+    3) Fallback revalidation
+    4) Packaged clean first-run stability
+    5) No-dispatch-regression packaged smoke
+  - Non-blocking polish/meta backlog (OPEN):
+    - icon/branding packaged consistency
+    - perf/debug marker visibility hygiene
+    - observability hygiene (retention/size discipline)
+    - final evidence/release-note organization
+- SSOT checkpoint (2026-03-09; performance closeout + next-phase ordering, no new decision):
+  - Performance gates closure:
+    - Main navigation perf gate CLOSED (`V34_WAVE1_PERF_EXPANSION_20260308-233749`).
+    - Persona Lite -> Optimizations transition lag CLOSED (`V37_PERSONA_ROUTE_LEAVE_COALESCE_20260309-002548`).
+    - Lifecycle mini-slice CLOSED on worker-on release exe path (`V44_LIFECYCLE_MINI_SLICE_20260309-220452`):
+      - startup_ready_ms ~1.0-1.1s
+      - shutdown close_to_exit_ms_estimate ~1.52s
+    - Packaging install-root tmp-path blocker CLOSED (`V43_INSTALL_LOCATION_HARD_CLOSURE_20260309-211154`).
+    - Overall performance gates: PASS (release-complete enough for current lane).
+  - Deferred items (OPEN, non-blocking for current release closeout):
+    - Connections detail interaction rough edge (Wave-2A residual).
+    - Worker-ON steady RAM < 250 MB optimization target (future slice).
+  - Preferred immediate order lock (post-perf):
+    1) post-perf cleanup/hardening
+    2) security review / mini pentest
+    3) release prep / known issues / worker launch stance
+    4) then first future optimization slice: worker-on memory reduction below 250 MB
+- SSOT checkpoint (2026-03-09; release-prep runtime stance realignment):
+  - This snapshot supersedes prior user-facing dual runtime mode wording in release-prep context.
+  - Revised runtime stance:
+    - installed product uses a single fast default runtime profile (worker-primary default),
+    - legacy subprocess path remains internal fallback safety only (timeout/error/invalid response),
+    - worker OFF/ON distinction is removed from user-facing stance.
+  - Release-prep scope update:
+    - default packaged worker-primary behavior becomes the primary smoke target,
+    - fallback verification remains required but internal-only,
+    - docs/release-note/support wording must avoid runtime mode switching guidance.
+  - Deferred items unchanged:
+    - Connections detail interaction rough edge (Wave-2A residual).
+    - Worker-ON steady RAM < 250 MB optimization target (future slice).
+- SSOT checkpoint (2026-03-10; security closeout packaging):
+  - Security mini-gate PASS (`V50_RELEASE_SECURITY_MINI_GATE_20260309-234645`).
+  - Narrow security polish PASS (`V52_NARROW_SECURITY_POLISH_PATCH_20260310-000816`):
+    - unknown-op / invalid-request semantic hardening applied,
+    - vault plaintext-read related generic exception hygiene applied.
+  - Security closeout conclusion:
+    - no release-blocking finding in scoped security lane.
+  - Security deferred (single item):
+    - `MCP_SYNAPSE_PYTHON` boundary tightening.
+- SSOT checkpoint (2026-03-11; release runway sync, no new decision):
+  - Release package prep PASS (`V57_RELEASE_PACKAGE_PREP_20260310-022825`):
+    - fresh bundled build generated,
+    - artifact inventory + SHA256 manifest captured,
+    - install/shortcut sanity captured for that step.
+  - Narrow UI polish progression:
+    - Step 2A PASS (`V58_STEP2A_UI_MINI_POLISH_2SURFACES_20260311-063054`, `V59_STEP2A_DASHBOARD_FINAL_POLISH_20260311-064604`),
+    - Step 2B PASS (`V60_STEP2B_UI_POLISH_CONNECTIONS_USAGE_METADATA_20260311-070451`),
+    - Step 2C PASS (`V61_STEP2C_SETTINGS_HELP_FINALIZE_20260311-074026`, `V62_STEP2C_HELP_LINK_HOTFIX_20260311-074647`, `V63_HELP_LINK_EXECUTE_SAFE_20260311-075115`),
+    - Step 2D closure patch applied (`V65_STEP2D_CLOSURE_INSTALL_ROOT_ICON_20260311-090522`) after blocker in `V64_STEP2D_DESKTOP_SHELL_BRANDING_20260311-081331`,
+    - Step 2E desktop UX hardening patch applied (`V66_STEP2E_DESKTOP_UX_HARDENING_20260311-093444`).
+  - Release docs finalize package created under `docs/release/releases/v0.6.0-rc.1/`:
+    - `RELEASE_NOTES.md`, `WHAT_CHANGED.md`, `SHA256SUMS.txt`,
+    - `KNOWN_ISSUES.md`, `INSTALL_RUN_NOTES.md`, `TRUST_SECURITY.md`,
+    - existing `UNSIGNED_NOTICE.md` retained.
+  - Runtime/product stance unchanged:
+    - single fast default runtime profile for installed product,
+    - legacy subprocess path is internal fallback safety only.
+  - Deferred items remain unchanged:
+    - Connections detail interaction rough edge (Wave-2A residual),
+    - worker-on RAM optimization target (<250 MB),
+    - `MCP_SYNAPSE_PYTHON` boundary tightening.
+  - RC decision status:
+    - REVALIDATE until final packaged smoke-truth evidence is consolidated in one release-close evidence pack.
+- SSOT checkpoint (2026-03-11; final preflight + RC decision, no new decision):
+  - Consolidated packaged closure set:
+    - `V68_FINAL_PACKAGED_SMOKE_TRUTH_RC_20260311-103015` PASS,
+    - `V69_IDENTITY_PARITY_CLOSURE_20260311-104200` PASS,
+    - `V70_SPEED_COMPARE_WORKER_ON_OFF_20260311-110543` PASS,
+    - `V71_RELEASE_CHECKSUM_UPDATE_20260311-111229` PASS.
+  - Current release-close classification:
+    - RC READY.
+  - Deferred carry-forward remains unchanged:
+    - Connections detail interaction rough edge (Wave-2A residual),
+    - worker-on RAM optimization target (<250 MB),
+    - `MCP_SYNAPSE_PYTHON` boundary tightening.
 - Usage DB: data/usage.db + src/data/usage_db.py
 - Config: data/config.json + src/config/manager.py
 - Provider integration: src/vertex/client.py (uses Google Vertex AI)

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { beforeNavigate } from "$app/navigation";
   import PolicySelect from "../policy-select.svelte";
   import { uiCacheGet, uiCacheSet, uiRunDeduped } from "$lib/ui_session";
 
@@ -93,6 +94,13 @@
   let saveInFlight = $state(false);
   let hydrated = $state(false);
   let persistArmed = $state(false);
+  let pendingPersistState: PersonaState | null = null;
+  let pendingPersistKey = "";
+  let inFlightPersistKey = "";
+  let lastPersistedKey = "";
+  let skipTargetReloadForPersistKey = "";
+  let pendingSuccessMessage = "";
+  let routeLeaving = false;
   const PERSONA_STATE_CACHE_KEY = "policies.persona.state";
   const PERSONA_TARGETS_CACHE_KEY = "policies.persona.targets";
   const PERSONA_CACHE_TTL_MS = 120000;
@@ -251,6 +259,14 @@
     };
   }
 
+  function statePayloadKey(payload: PersonaState) {
+    return JSON.stringify(payload);
+  }
+
+  function isCurrentStateDirty() {
+    return statePayloadKey(currentStatePayload()) !== lastPersistedKey;
+  }
+
   function applyHydratedState(state: PersonaState | null | undefined) {
     const next = normalizeState(state);
     selectedPersonaId = next.selectedPersonaId;
@@ -263,8 +279,12 @@
     presetNameDraft = selected?.name || "";
     personaTextDraft = selected?.text || "";
     applied = next.applied;
+    prevSelectedPersonaId = selectedPersonaId;
+    prevSelectedTargetId = selectedTargetId;
+    prevSelectedPresetId = selectedPresetId;
     hydrated = true;
     persistArmed = false;
+    lastPersistedKey = statePayloadKey(currentStatePayload());
   }
 
   async function dispatchInvoke(promptPayload: Record<string, unknown>): Promise<DispatchResponse> {
@@ -336,27 +356,56 @@
     }
   }
 
-  async function persistPersonaState(successMessage = "") {
+  function queuePersonaPersist(successMessage = "") {
+    if (routeLeaving) return;
+    const snapshot = currentStatePayload();
+    const key = statePayloadKey(snapshot);
+    if (key === lastPersistedKey || key === inFlightPersistKey || key === pendingPersistKey) return;
+    pendingPersistState = snapshot;
+    pendingPersistKey = key;
+    if (successMessage) pendingSuccessMessage = successMessage;
     if (saveInFlight) return;
-    saveInFlight = true;
-    setBanner("idle", "");
-    try {
-      const result = await dispatchInvoke({ op: "policies.persona.set_state", state: currentStatePayload() });
-      if (!result.ok) {
-        const code = result.error?.code ? `${result.error.code}: ` : "";
-        const msg = result.error?.message || (result.errors || []).join("; ") || "request failed";
-        setBanner("danger", `Persona save failed: ${code}${msg}`);
-        return;
+    void flushPersonaPersistQueue();
+  }
+
+  async function flushPersonaPersistQueue() {
+    if (saveInFlight) return;
+    while (pendingPersistState) {
+      const payload = pendingPersistState;
+      const key = pendingPersistKey;
+      const successMessage = pendingSuccessMessage;
+      pendingPersistState = null;
+      pendingPersistKey = "";
+      pendingSuccessMessage = "";
+      if (!key || key === lastPersistedKey) continue;
+
+      saveInFlight = true;
+      inFlightPersistKey = key;
+      setBanner("idle", "");
+      try {
+        const result = await dispatchInvoke({ op: "policies.persona.set_state", state: payload });
+        if (!result.ok) {
+          const code = result.error?.code ? `${result.error.code}: ` : "";
+          const msg = result.error?.message || (result.errors || []).join("; ") || "request failed";
+          setBanner("danger", `Persona save failed: ${code}${msg}`);
+          continue;
+        }
+        applyHydratedState(result.state);
+        if (key !== skipTargetReloadForPersistKey) {
+          void loadConnectionTargets();
+        }
+        if (successMessage) {
+          setBanner("success", successMessage);
+        }
+      } catch (err: any) {
+        setBanner("danger", `Persona save failed: ${err?.message || String(err)}`);
+      } finally {
+        if (key === skipTargetReloadForPersistKey) {
+          skipTargetReloadForPersistKey = "";
+        }
+        saveInFlight = false;
+        inFlightPersistKey = "";
       }
-      applyHydratedState(result.state);
-      await loadConnectionTargets();
-      if (successMessage) {
-        setBanner("success", successMessage);
-      }
-    } catch (err: any) {
-      setBanner("danger", `Persona save failed: ${err?.message || String(err)}`);
-    } finally {
-      saveInFlight = false;
     }
   }
 
@@ -368,12 +417,12 @@
       appliedAt: new Date().toISOString(),
     };
     applied = [row, ...applied];
-    void persistPersonaState("Persona applied.");
+    queuePersonaPersist("Persona applied.");
   }
 
   function removeApplied(id: string) {
     applied = applied.filter((r) => r.id !== id);
-    void persistPersonaState("Persona entry removed.");
+    queuePersonaPersist("Persona entry removed.");
   }
 
   const presetOptions = $derived(() => {
@@ -399,7 +448,7 @@
     if (!name) return;
     presets = presets.map((p) => (p.id === id ? { ...p, name, text: personaTextDraft } : p));
     persistArmed = true;
-    void persistPersonaState("Preset saved.");
+    queuePersonaPersist("Preset saved.");
   }
 
   function openDeleteConfirm() {
@@ -422,7 +471,7 @@
     }
     deleteConfirmOpen = false;
     persistArmed = true;
-    void persistPersonaState("Preset deleted.");
+    queuePersonaPersist("Preset deleted.");
   }
 
   function closeAddPreset() {
@@ -442,7 +491,7 @@
     selectedPersonaId = id;
     closeAddPreset();
     persistArmed = true;
-    void persistPersonaState("Preset added.");
+    queuePersonaPersist("Preset added.");
   }
 
   $effect(() => {
@@ -458,14 +507,23 @@
 
   $effect(() => {
     if (!hydrated || !persistArmed) return;
-    void persistPersonaState();
+    if (routeLeaving) {
+      persistArmed = false;
+      return;
+    }
+    if (!isCurrentStateDirty()) {
+      persistArmed = false;
+      return;
+    }
     persistArmed = false;
+    queuePersonaPersist();
   });
 
   let prevSelectedPersonaId = $state(selectedPersonaId);
   let prevSelectedTargetId = $state(selectedTargetId);
   let prevSelectedPresetId = $state(selectedPresetId);
   $effect(() => {
+    if (routeLeaving) return;
     if (!hydrated) return;
     if (
       selectedPersonaId !== prevSelectedPersonaId ||
@@ -475,8 +533,28 @@
       prevSelectedPersonaId = selectedPersonaId;
       prevSelectedTargetId = selectedTargetId;
       prevSelectedPresetId = selectedPresetId;
-      persistArmed = true;
+      persistArmed = isCurrentStateDirty();
     }
+  });
+
+  beforeNavigate(() => {
+    if (!hydrated) return;
+    routeLeaving = true;
+    if (persistArmed) persistArmed = false;
+    const finalSnapshot = currentStatePayload();
+    const key = statePayloadKey(finalSnapshot);
+    if (!key || key === lastPersistedKey || key === inFlightPersistKey) {
+      pendingPersistState = null;
+      pendingPersistKey = "";
+      pendingSuccessMessage = "";
+      return;
+    }
+    pendingPersistState = finalSnapshot;
+    pendingPersistKey = key;
+    pendingSuccessMessage = "";
+    skipTargetReloadForPersistKey = key;
+    if (saveInFlight) return;
+    void flushPersonaPersistQueue();
   });
 
   onMount(() => {

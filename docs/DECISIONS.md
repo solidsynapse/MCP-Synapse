@@ -839,3 +839,104 @@ P4 UI PREP is ALLOWED when:
   - Trademark policy is mandatory before broad public distribution:
     - forks/re-distributions must not present product name/logo as official.
   - Code signing is planned for `0.9.x -> 1.0.0` phase; until then, integrity/traceability controls above are non-optional.
+
+### 2026-03-08 SSOT Sync Checkpoint (non-normative; no new decision)
+- This checkpoint records current truth alignment only; it does not add or change normative policy.
+- Blocker-1 no-console closure is treated as closed on current evidence (`CREATE_NO_WINDOW` hotfix + packaged revalidation):
+  - `docs\evidence\RC_EXT_BLOCKER1_NO_CONSOLE_HOTFIX_20260308-064011\`
+  - `docs\evidence\RC_EXT_BLOCKER1_CHOKEPOINT_COMPLETE_20260308-070019\`
+- Packaging/meta closure snapshot (naming + MSI numeric override + packaged artifact generation) is recorded as aligned:
+  - `docs\evidence\PAK_01_MSI_OVERRIDE_FIX_20260308-061847\`
+  - `docs\evidence\PAK_01_POST_BUILD_SMOKE_20260308-062840\`
+- Performance classification is locked at architectural level:
+  - route-independent direct backend latency cluster (~4.4s band),
+  - dominant cost class: per-call Python subprocess/import/bootstrap overhead,
+  - TTL cache remains UX mitigation only (not root-cause fix).
+- Phase-2 worker track snapshot:
+  - V16 spike decision: worth integrating (`docs\evidence\V16_PHASE2_WORKER_SPIKE_20260308-090923\`)
+  - V17 minimum integration: PASS, default OFF, flag-gated whitelist (3 ops), mandatory fallback (`docs\evidence\V17_PHASE2_MIN_INTEGRATION_20260308-101000\`).
+
+### 2026-03-09 SSOT Sync Checkpoint (non-normative; no new decision)
+- This checkpoint records closure/defer classification only; it does not introduce new normative policy.
+- Performance gate closure snapshot:
+  - Main navigation perf gate CLOSED (`docs\evidence\V34_WAVE1_PERF_EXPANSION_20260308-233749\`).
+  - Persona Lite -> Optimizations transition lag CLOSED (`docs\evidence\V37_PERSONA_ROUTE_LEAVE_COALESCE_20260309-002548\`).
+  - Lifecycle mini-slice CLOSED on worker-on release-exe path (`docs\evidence\V44_LIFECYCLE_MINI_SLICE_20260309-220452\`) with ~1.0-1.1s startup_ready and ~1.52s shutdown close-to-exit marker.
+  - Packaging install-root tmp-path blocker CLOSED (`docs\evidence\V43_INSTALL_LOCATION_HARD_CLOSURE_20260309-211154\`).
+  - Overall performance gates treated as PASS (release-complete enough for current lane).
+- Deferred items snapshot (non-blocking for current release closeout):
+  - Connections detail interaction rough edge (Wave-2A residual).
+  - Worker-ON steady RAM < 250 MB target (future optimization slice).
+- Ordered immediate next-phase preference snapshot:
+  1) post-perf cleanup/hardening
+  2) security review / mini pentest
+  3) release prep / known issues / worker launch stance
+  4) then worker-on memory optimization slice (<250 MB steady RAM target)
+
+### 2026-03-09 Runtime Stance Realignment Checkpoint (non-normative; release-prep policy lock)
+- This checkpoint updates release-prep stance only and supersedes prior user-facing dual-mode wording.
+- Product runtime stance for installed app:
+  - Single user-facing runtime profile (fast profile by default).
+  - Worker-primary behavior is default product behavior.
+  - Legacy subprocess path remains internal same-request fallback safety only.
+  - Worker OFF/ON distinction is not a user-facing operating mode.
+- Release-prep impact snapshot:
+  - Smoke scope centers on default worker-primary packaged behavior + internal fallback safety revalidation.
+  - User-facing docs/release notes/support wording must not instruct runtime mode switching.
+- Deferred items unchanged:
+  - Connections detail interaction rough edge (Wave-2A residual).
+  - Worker-ON steady RAM < 250 MB target (future optimization slice).
+
+### 2026-03-10 Security Closeout Checkpoint (non-normative; release-close classification)
+- Security closeout status:
+  - Security mini-gate PASS (`docs\evidence\V50_RELEASE_SECURITY_MINI_GATE_20260309-234645\`).
+  - Narrow security polish PASS (`docs\evidence\V52_NARROW_SECURITY_POLISH_PATCH_20260310-000816\`).
+  - Scope covered: unknown-op/invalid-request semantic hardening + vault plaintext-read generic error hygiene.
+- Release-close result (security lane):
+  - No release-blocking finding in this scoped security closeout.
+  - Deferred security item (single carry-forward): `MCP_SYNAPSE_PYTHON` boundary tightening.
+- Runtime/product stance remains unchanged:
+  - single user-facing default runtime profile,
+  - legacy path internal fallback safety only.
+
+### 2026-03-11 Release Runway Sync Checkpoint (non-normative; no new decision)
+- This checkpoint records release-runway alignment only; it does not introduce or alter normative policy.
+- Recorded closure/progress set:
+  - Release package prep PASS (`docs\evidence\V57_RELEASE_PACKAGE_PREP_20260310-022825\`).
+  - Narrow UI polish sequence recorded through Step 2E:
+    - `V58_STEP2A_UI_MINI_POLISH_2SURFACES_20260311-063054`
+    - `V59_STEP2A_DASHBOARD_FINAL_POLISH_20260311-064604`
+    - `V60_STEP2B_UI_POLISH_CONNECTIONS_USAGE_METADATA_20260311-070451`
+    - `V61_STEP2C_SETTINGS_HELP_FINALIZE_20260311-074026`
+    - `V62_STEP2C_HELP_LINK_HOTFIX_20260311-074647`
+    - `V63_HELP_LINK_EXECUTE_SAFE_20260311-075115`
+    - `V64_STEP2D_DESKTOP_SHELL_BRANDING_20260311-081331`
+    - `V65_STEP2D_CLOSURE_INSTALL_ROOT_ICON_20260311-090522`
+    - `V66_STEP2E_DESKTOP_UX_HARDENING_20260311-093444`
+  - Release docs package is now fully populated under `docs/release/releases/v0.6.0-rc.1/` with release notes, what-changed, SHA256, known issues, install/run notes, trust/security note, and unsigned notice.
+- Runtime stance remains locked from prior checkpoint:
+  - single fast default runtime profile for installed product,
+  - legacy subprocess path internal same-request fallback safety only.
+- Deferred items remain unchanged:
+  - Connections detail interaction rough edge (Wave-2A residual),
+  - worker-on RAM optimization target (<250 MB),
+  - `MCP_SYNAPSE_PYTHON` boundary tightening.
+- RC posture for this checkpoint:
+  - keep `REVALIDATE` until final packaged smoke-truth bundle is consolidated as one release-close evidence root.
+
+### 2026-03-11 Final Preflight + RC Decision Checkpoint (non-normative; no new decision)
+- This checkpoint supersedes the prior same-day `REVALIDATE` posture and records consolidated closure only.
+- Consolidated release-close truth set:
+  - Final packaged smoke-truth bundle PASS (`docs\evidence\V68_FINAL_PACKAGED_SMOKE_TRUTH_RC_20260311-103015\`).
+  - Identity and shell parity closure PASS (`docs\evidence\V69_IDENTITY_PARITY_CLOSURE_20260311-104200\`):
+    - installed binary identity propagated as `mcp-synapse.exe`,
+    - icon parity chain closed on packaged surfaces,
+    - post-fix worker-primary + same-request fallback smoke reconfirmed.
+  - Worker ON/OFF A/B benchmark PASS (`docs\evidence\V70_SPEED_COMPARE_WORKER_ON_OFF_20260311-110543\`) with parity OK and strong p95 gain on covered ops.
+  - Release checksum manifest update PASS (`docs\evidence\V71_RELEASE_CHECKSUM_UPDATE_20260311-111229\`).
+- RC posture for current checkpoint:
+  - `RC READY`.
+- Deferred set remains unchanged:
+  - Connections detail interaction rough edge (Wave-2A residual),
+  - worker-on RAM optimization target (<250 MB),
+  - `MCP_SYNAPSE_PYTHON` boundary tightening.

@@ -1,6 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import ShortcutsModal from "$lib/components/ShortcutsModal.svelte";
+  import { PHASE1_TTL_CACHE_OPS, uiInvalidateOpCaches } from "$lib/ui_session";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
@@ -100,7 +101,6 @@
   }
 
   function closeHelp(event: MouseEvent) {
-    event.preventDefault();
     const el = event.currentTarget as HTMLElement | null;
     const details = el?.closest("details") as HTMLDetailsElement | null;
     if (details) details.open = false;
@@ -113,11 +113,18 @@
   let lastRefresh = $state(formatTime(new Date()));
   let refreshBusy = $state(false);
   let shortcutsOpen = $state(false);
+  let traceMarker = $state("ON | waiting");
+  let showPerfTrace = $state(false);
 
   function triggerRefresh() {
     refreshBusy = true;
     lastRefresh = formatTime(new Date());
     if (typeof window !== "undefined") {
+      uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+        reason: "global_refresh",
+        source: "layout.refresh_button",
+        route: window.location.pathname,
+      });
       window.dispatchEvent(new CustomEvent("synapse:global-refresh"));
       window.setTimeout(() => {
         refreshBusy = false;
@@ -140,7 +147,19 @@
     return false;
   }
 
+  function readInternalDebugGate(): boolean {
+    if (typeof window === "undefined") return false;
+    const host = window as unknown as Record<string, unknown>;
+    if (host.__SYNAPSE_INTERNAL_DEBUG__ === true) return true;
+    try {
+      return window.localStorage?.getItem("synapse.internal.debug") === "1";
+    } catch {
+      return false;
+    }
+  }
+
   onMount(() => {
+    showPerfTrace = readInternalDebugGate();
     const getHelpDetails = () => document.querySelector("header details") as HTMLDetailsElement | null;
 
     const onPointerDown = (event: PointerEvent) => {
@@ -235,11 +254,25 @@
       }
     };
 
+    const onOpCacheTrace = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail ?? {};
+      const status = String(detail.status ?? "--").trim();
+      const op = String(detail.op ?? "--").trim();
+      const source = String(detail.source ?? "--").trim();
+      traceMarker = `${status} ${op} | ${source}`;
+    };
+
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("keydown", onKeyDown, true);
+    if (showPerfTrace) {
+      window.addEventListener("synapse:opcache-trace", onOpCacheTrace as EventListener);
+    }
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
+      if (showPerfTrace) {
+        window.removeEventListener("synapse:opcache-trace", onOpCacheTrace as EventListener);
+      }
     };
   });
 
@@ -257,30 +290,24 @@
       "
     >
       <div
-        class={`flex h-[56px] items-center justify-between border-b ${sidebarCollapsed ? "gap-1 px-2" : "gap-3 px-4"}`}
+        class={`flex h-[56px] items-center border-b ${sidebarCollapsed ? "px-2" : "px-3"}`}
         style="border-color: var(--border-subtle);"
       >
-        <div class={`flex min-w-0 shrink-0 items-center gap-3 ${sidebarCollapsed ? "" : "flex-1"}`}>
-          <div 
-            class="grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm font-semibold"
-            style="background: linear-gradient(135deg, var(--accent-base), #1a7f6c); color: #fff;"
-          >
-            M
-          </div>
-          {#if !sidebarCollapsed}
-            <div class="min-w-0 truncate text-sm font-semibold tracking-wide">MCP Synapse</div>
-          {/if}
-        </div>
         <button
           type="button"
-          class="grid h-7 w-7 place-items-center rounded-md text-xs hover:bg-white/5 text-slate-400"
+          class={`flex min-w-0 items-center gap-3 rounded-md border-0 bg-transparent ${sidebarCollapsed ? "w-full justify-center px-1" : "w-full px-2"} py-1.5 text-left transition-colors hover:bg-white/5`}
           onclick={() => (sidebarCollapsed = !sidebarCollapsed)}
           aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {#if sidebarCollapsed}
-            &gt;
-          {:else}
-            &lt;
+          <div
+            class="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-md"
+            style="background-color: rgba(255,255,255,0.04);"
+          >
+            <img src="/brand/app-header-symbol.svg" alt="mcp synapse" class="h-7 w-7 object-contain" loading="eager" decoding="async" />
+          </div>
+          {#if !sidebarCollapsed}
+            <div class="min-w-0 truncate text-sm font-semibold tracking-wide">mcp synapse</div>
           {/if}
         </button>
       </div>
@@ -498,13 +525,13 @@
                 class="absolute right-0 mt-2 w-40 overflow-hidden rounded-lg border shadow-xl z-50"
                 style="background-color: var(--surface-1); border-color: var(--border-subtle);"
               >
-                <a href="#docs" class="block w-full px-4 py-2 text-left text-xs hover:bg-white/5 transition-colors text-slate-300 hover:text-white" onclick={closeHelp}>
+                <a href="https://mcpsynapse.dev/docs" target="_blank" rel="noreferrer noopener" class="block w-full px-4 py-2 text-left text-xs hover:bg-white/5 transition-colors text-slate-300 hover:text-white" onclick={closeHelp}>
                   Docs
                 </a>
-                <a href="#feedback" class="block w-full px-4 py-2 text-left text-xs hover:bg-white/5 transition-colors text-slate-300 hover:text-white" onclick={closeHelp}>
+                <a href="https://mcpsynapse.dev/feedback" target="_blank" rel="noreferrer noopener" class="block w-full px-4 py-2 text-left text-xs hover:bg-white/5 transition-colors text-slate-300 hover:text-white" onclick={closeHelp}>
                   Feedback
                 </a>
-                <a href="#about" class="block w-full px-4 py-2 text-left text-xs hover:bg-white/5 transition-colors text-slate-300 hover:text-white" onclick={closeHelp}>
+                <a href="https://mcpsynapse.dev" target="_blank" rel="noreferrer noopener" class="block w-full px-4 py-2 text-left text-xs hover:bg-white/5 transition-colors text-slate-300 hover:text-white" onclick={closeHelp}>
                   About
                 </a>
               </div>
@@ -524,6 +551,9 @@
     style="height: 30px; border-color: var(--border-subtle); color: var(--text-muted); font-size: 11px;"
   >
     <div>Solid Synapse (c) 2026</div>
+    {#if showPerfTrace}
+      <div class="truncate px-3" style="max-width: 55%;">Perf Trace: {traceMarker}</div>
+    {/if}
     <div>Last refresh: {lastRefresh}</div>
   </footer>
 </div>

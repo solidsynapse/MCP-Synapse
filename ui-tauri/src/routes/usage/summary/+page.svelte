@@ -1,7 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import UsageFilters from "../usage-filters.svelte";
-  import { uiCacheGet, uiCacheSet, uiRunDeduped } from "$lib/ui_session";
+  import {
+    PHASE1_TTL_CACHE_OPS,
+    PHASE1_TTL_CACHE_TTL_MS,
+    getUsageSession,
+    patchUsageSession,
+    uiBuildOpCacheKey,
+    uiCacheGet,
+    uiCacheSet,
+    uiInvalidateOpCaches,
+    uiRunDeduped,
+    uiTraceOpCache,
+  } from "$lib/ui_session";
 
   type UsageRow = {
     id: number | null;
@@ -9,6 +20,7 @@
     connection_id: string | null;
     connection_name: string | null;
     provider: string | null;
+    model_id: string | null;
     request_id: string | null;
     status: string | null;
     latency_ms: number | null;
@@ -30,9 +42,10 @@
     error?: DispatchError | null;
   };
 
-  let provider = $state<ProviderId>("all");
-  let dateRange = $state<DateRangeId>("24h");
-  let sort = $state<SortId>("time_desc");
+  const session = getUsageSession();
+  let provider = $state<ProviderId>(session.provider as ProviderId);
+  let dateRange = $state<DateRangeId>(session.dateRange as DateRangeId);
+  let sort = $state<SortId>(session.sort as SortId);
   let bannerKind = $state<BannerKind>("idle");
   let bannerText = $state("");
   let currentPage = $state(1);
@@ -48,8 +61,7 @@
   });
 
   let rows = $state<UsageRow[]>([]);
-  const USAGE_SUMMARY_CACHE_KEY = "usage.summary.recent";
-  const USAGE_SUMMARY_CACHE_TTL_MS = 60000;
+  const USAGE_SUMMARY_OP = "usage.recent";
   type UsageSummaryCache = {
     kpis: typeof kpis;
     rows: UsageRow[];
@@ -208,6 +220,11 @@
     return value ?? "N/A";
   }
 
+  function providerModelTooltip(row: UsageRow): string | undefined {
+    const modelId = String(row.model_id || "").trim();
+    return modelId || undefined;
+  }
+
   function bannerClass(kind: BannerKind) {
     if (kind === "success") return "border-emerald-900/40 bg-emerald-400/10 text-emerald-200";
     if (kind === "danger") return "border-rose-900/40 bg-rose-500/10 text-rose-200";
@@ -240,11 +257,43 @@
     }) as UsageRecentResponse;
   }
 
-  async function loadUsageSummary() {
+  function usageSummaryCacheKey() {
+    return uiBuildOpCacheKey(
+      USAGE_SUMMARY_OP,
+      { op: USAGE_SUMMARY_OP, limit: 200 },
+      { provider, dateRange, sort },
+    );
+  }
+
+  async function loadUsageSummary(forceRefresh = false) {
     setBanner("idle", "");
+    const source = forceRefresh ? "usage.summary.global_refresh_event" : "usage.summary.load";
+    const cacheKey = usageSummaryCacheKey();
+    if (forceRefresh) {
+      uiInvalidateOpCaches(PHASE1_TTL_CACHE_OPS, {
+        reason: "global_refresh_event",
+        source,
+        route: "/usage/summary",
+      });
+    }
     try {
-      const snapshot = await uiRunDeduped(USAGE_SUMMARY_CACHE_KEY, async (): Promise<UsageSummaryCache> => {
-        const result = await dispatchInvoke({ op: "usage.recent", limit: 200 });
+      const cached = uiCacheGet<UsageSummaryCache>(cacheKey, PHASE1_TTL_CACHE_TTL_MS);
+      uiTraceOpCache({
+        op: USAGE_SUMMARY_OP,
+        status: cached ? "HIT" : "MISS",
+        route: "/usage/summary",
+        source,
+        reason: "ttl_lookup",
+        key: cacheKey,
+      });
+      if (cached) {
+        kpis = cached.kpis;
+        rows = cached.rows;
+        currentPage = 1;
+        return;
+      }
+      const snapshot = await uiRunDeduped(cacheKey, async (): Promise<UsageSummaryCache> => {
+        const result = await dispatchInvoke({ op: USAGE_SUMMARY_OP, limit: 200 });
         if (!result.ok) {
           const code = result.error?.code ? `${result.error.code}: ` : "";
           const message = result.error?.message || "dispatch failed";
@@ -273,6 +322,7 @@
             connection_id: typeof row?.connection_id === "string" ? row.connection_id : null,
             connection_name: typeof row?.connection_name === "string" ? row.connection_name : null,
             provider: typeof row?.provider === "string" ? row.provider : null,
+            model_id: typeof row?.model_id === "string" ? row.model_id : null,
             request_id: typeof row?.request_id === "string" ? row.request_id : null,
             status: typeof row?.status === "string" ? row.status : null,
             latency_ms: typeof row?.latency_ms === "number" ? row.latency_ms : null,
@@ -284,7 +334,7 @@
       });
       kpis = snapshot.kpis;
       rows = snapshot.rows;
-      uiCacheSet(USAGE_SUMMARY_CACHE_KEY, snapshot);
+      uiCacheSet(cacheKey, snapshot);
       currentPage = 1;
     } catch (err: any) {
       setBanner("danger", `Usage load failed: ${err?.message || String(err)}`);
@@ -292,7 +342,16 @@
   }
 
   onMount(() => {
-    const cached = uiCacheGet<UsageSummaryCache>(USAGE_SUMMARY_CACHE_KEY, USAGE_SUMMARY_CACHE_TTL_MS);
+    const bootstrapKey = usageSummaryCacheKey();
+    const cached = uiCacheGet<UsageSummaryCache>(bootstrapKey, PHASE1_TTL_CACHE_TTL_MS);
+    uiTraceOpCache({
+      op: USAGE_SUMMARY_OP,
+      status: cached ? "HIT" : "MISS",
+      route: "/usage/summary",
+      source: "usage.summary.on_mount.bootstrap",
+      reason: "ttl_lookup",
+      key: bootstrapKey,
+    });
     let refreshDelayMs = 0;
     if (cached) {
       kpis = cached.kpis;
@@ -303,7 +362,7 @@
       void loadUsageSummary();
     }, refreshDelayMs);
     const onGlobalRefresh = () => {
-      void loadUsageSummary();
+      void loadUsageSummary(true);
     };
     const onResize = () => {
       if (pageSizeTimer) {
@@ -328,6 +387,10 @@
         }
       }
     };
+  });
+
+  $effect(() => {
+    patchUsageSession({ provider, dateRange, sort });
   });
 
   $effect(() => {
@@ -404,7 +467,7 @@
             <tr class={`border-b ui-row-hover ${idx % 2 === 0 ? "bg-transparent" : "bg-white/[0.02]"}`} style="border-color: var(--border-subtle);">
               <td class="px-4 py-3" style="color: var(--text-muted);">{formatTimestamp(row.timestamp)}</td>
               <td class="px-4 py-3" style="color: var(--text-muted);">{row.connection_name ?? "N/A"}</td>
-              <td class="px-4 py-3" style="color: var(--text-muted);">{providerLabel(row.provider)}</td>
+              <td class="px-4 py-3" style="color: var(--text-muted);" title={providerModelTooltip(row)}>{providerLabel(row.provider)}</td>
               <td class="px-4 py-3" style="color: var(--text-primary);">{statusLabel(row.status)}</td>
               <td class="px-4 py-3" style="color: var(--text-muted);">{row.latency_ms ?? "N/A"}</td>
               <td class="px-4 py-3" style="color: var(--text-muted);">{row.tokens_input ?? "N/A"}</td>
