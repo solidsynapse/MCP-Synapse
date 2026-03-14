@@ -12,7 +12,6 @@
     { id: "openai", label: "OpenAI" },
     { id: "azure_openai", label: "Azure OpenAI" },
     { id: "vertex", label: "Vertex AI" },
-    { id: "bedrock", label: "Bedrock" },
     { id: "huggingface", label: "Hugging Face" },
     { id: "ollama", label: "Ollama" },
   ];

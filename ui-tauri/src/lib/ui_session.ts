@@ -85,6 +85,7 @@ type CacheEntry = { at: number; value: unknown };
 const responseCache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<unknown>>();
 const PERSISTENT_CACHE_PREFIX = "synapse.cache.";
+const USAGE_SESSION_STORAGE_KEY = "synapse.session.usage.v1";
 const PHASE1_TTL_CACHE_KEY_PREFIX = "opcache::";
 
 export const PHASE1_TTL_CACHE_TTL_MS = 5 * 1000;
@@ -185,6 +186,46 @@ function getPersistentStorageKey(key: string): string {
   return `${PERSISTENT_CACHE_PREFIX}${key}`;
 }
 
+function createInitialState(): UiSessionState {
+  const next = clone(DEFAULT_STATE);
+  const persisted = readUsageSessionFromStorage();
+  if (persisted) {
+    next.usage = { ...next.usage, ...persisted };
+  }
+  return next;
+}
+
+function readUsageSessionFromStorage(): Partial<UsageSessionState> | null {
+  const storage = getPersistentStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(USAGE_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<UsageSessionState> | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    const next: Partial<UsageSessionState> = {};
+    if (typeof parsed.provider === "string") next.provider = parsed.provider;
+    if (typeof parsed.dateRange === "string") next.dateRange = parsed.dateRange;
+    if (typeof parsed.sort === "string") next.sort = parsed.sort;
+    if (Object.keys(next).length === 0) return null;
+    return next;
+  } catch {
+    return null;
+  }
+}
+
+function persistUsageSessionToStorage(usage: UsageSessionState): void {
+  const storage = getPersistentStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(USAGE_SESSION_STORAGE_KEY, JSON.stringify(usage));
+  } catch {
+    // ignore storage write failures
+  }
+}
+
+state = createInitialState();
+
 export function resetUiSession() {
   state = clone(DEFAULT_STATE);
 }
@@ -215,6 +256,7 @@ export function getUsageSession(): UsageSessionState {
 
 export function patchUsageSession(patch: Partial<UsageSessionState>) {
   state = { ...state, usage: { ...state.usage, ...patch } };
+  persistUsageSessionToStorage(state.usage);
 }
 
 export function getSettingsSession(): SettingsSessionState {

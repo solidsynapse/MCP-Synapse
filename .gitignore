@@ -43,3 +43,7 @@ Thumbs.db
 .idea/
 .pytest_cache/
 .trae/
+
+demo_dataset_summary.md
+site/
+tmp/

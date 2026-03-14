@@ -155,7 +155,6 @@
     { id: "openai", label: "OpenAI" },
     { id: "azure_openai", label: "Azure OpenAI" },
     { id: "vertex", label: "Vertex AI" },
-    { id: "bedrock", label: "Bedrock" },
     { id: "huggingface", label: "Hugging Face" },
     { id: "ollama", label: "Ollama" },
   ];
@@ -402,6 +401,16 @@
       return "Bedrock API bearer token (ABSK...). Required when Credential source is API Key.";
     }
     return "";
+  }
+
+  function fieldHelpText(field: SchemaHintField): string {
+    const rawHelp = String(field.help ?? "").trim();
+    if (!rawHelp) return "";
+    const fieldId = String(field.id || "").trim().toLowerCase();
+    if (fieldId === "credentials_path") {
+      return rawHelp.replace(/^optional\s+/i, "");
+    }
+    return rawHelp;
   }
 
   function toggleHelper(fieldId: string) {
@@ -1824,6 +1833,12 @@
   </div>
 {/if}
 
+<style>
+  select {
+    color-scheme: dark;
+  }
+</style>
+
 {#if deleteConfirmOpen}
   {@const toDelete = deleteConfirmId ? connections.find((c) => c.id === deleteConfirmId) ?? null : null}
   <div class="fixed inset-0 z-50">
@@ -2114,8 +2129,8 @@
                         />
                       {/if}
                     {/if}
-                    {#if field.help}
-                      <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{field.help}</div>
+                    {#if fieldHelpText(field)}
+                      <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{fieldHelpText(field)}</div>
                     {/if}
                   </div>
                 {/if}
@@ -2230,8 +2245,8 @@
                             />
                           {/if}
                         {/if}
-                        {#if field.help}
-                          <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{field.help}</div>
+                        {#if fieldHelpText(field)}
+                          <div class="mt-1 text-[11px]" style="color: var(--text-muted);">{fieldHelpText(field)}</div>
                         {/if}
                       </div>
                       {/if}

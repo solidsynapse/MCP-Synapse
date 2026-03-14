@@ -722,7 +722,6 @@
               <option value="openai">OpenAI</option>
               <option value="azure_openai">Azure OpenAI</option>
               <option value="vertex">Vertex AI</option>
-              <option value="bedrock">Bedrock</option>
               <option value="huggingface">Hugging Face</option>
               <option value="ollama">Ollama</option>
             </select>
