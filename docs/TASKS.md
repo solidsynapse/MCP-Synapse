@@ -1641,3 +1641,18 @@ explicit banner preserved; ui check PASS).
     - [ ] Connections detail interaction rough edge (Wave-2A residual)
     - [ ] Worker-ON steady RAM < 250 MB future optimization slice
     - [ ] `MCP_SYNAPSE_PYTHON` boundary tightening
+
+- Runtime Hotfix Slice (2026-03-15, narrow)
+  - Objective: align installed default runtime with fast profile while preserving explicit OFF switch and fallback safety.
+  - Applied patch set:
+    - [x] `ui-tauri/src-tauri/src/worker_dispatch.rs`
+      - `worker_enabled()` env-unset path switched to enabled (`true`); explicit OFF values preserved.
+    - [x] `src/providers/factory.py`
+      - provider imports moved to lazy-load inside provider factory functions.
+    - [x] `src/vertex/client.py`
+      - `google/vertexai` imports moved from module-level to on-demand import sites.
+  - Verification gate (required before release cut):
+    - [ ] Packaged default run confirms worker-primary behavior without manual env toggle.
+    - [ ] Worker decision logs show stable `worker_success` dominance on whitelist ops.
+    - [ ] Menu transition latency reconfirmed under packaged default profile.
+    - [ ] Memory recheck recorded; if still above target, keep `<250 MB` as deferred follow-up slice.

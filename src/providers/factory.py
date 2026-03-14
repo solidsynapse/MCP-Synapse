@@ -3,12 +3,6 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from src.providers.base import ProviderClient
-from src.providers.azure_openai_client import AzureOpenAIProviderClient
-from src.providers.bedrock_client import BedrockProviderClient
-from src.providers.huggingface_client import HuggingFaceProviderClient
-from src.providers.openai_client import OpenAIProviderClient
-from src.providers.ollama_client import OllamaProviderClient
-from src.providers.vertex_client import VertexProviderClient
 
 
 ProviderClientFactory = Callable[[Any], ProviderClient]
@@ -31,6 +25,8 @@ class ProviderFactory:
 
 
 def _vertex_factory(context: Any) -> ProviderClient:
+    from src.providers.vertex_client import VertexProviderClient
+
     return VertexProviderClient(
         project_id=str(getattr(context, "project_id")),
         location=str(getattr(context, "location")),
@@ -45,6 +41,8 @@ ProviderFactory.register("vertex", _vertex_factory)
 
 
 def _azure_openai_factory(context: Any) -> ProviderClient:
+    from src.providers.azure_openai_client import AzureOpenAIProviderClient
+
     agent = getattr(context, "agent")
     return AzureOpenAIProviderClient(
         agent=dict(agent),
@@ -57,6 +55,8 @@ ProviderFactory.register("azure_openai", _azure_openai_factory)
 
 
 def _bedrock_factory(context: Any) -> ProviderClient:
+    from src.providers.bedrock_client import BedrockProviderClient
+
     agent = getattr(context, "agent")
     return BedrockProviderClient(
         agent=dict(agent),
@@ -69,6 +69,8 @@ ProviderFactory.register("bedrock", _bedrock_factory)
 
 
 def _huggingface_factory(context: Any) -> ProviderClient:
+    from src.providers.huggingface_client import HuggingFaceProviderClient
+
     agent = getattr(context, "agent")
     return HuggingFaceProviderClient(
         agent=dict(agent),
@@ -81,6 +83,8 @@ ProviderFactory.register("huggingface", _huggingface_factory)
 
 
 def _ollama_factory(context: Any) -> ProviderClient:
+    from src.providers.ollama_client import OllamaProviderClient
+
     agent = getattr(context, "agent")
     return OllamaProviderClient(
         agent=dict(agent),
@@ -92,6 +96,8 @@ ProviderFactory.register("ollama", _ollama_factory)
 
 
 def _openai_factory(context: Any) -> ProviderClient:
+    from src.providers.openai_client import OpenAIProviderClient
+
     agent = getattr(context, "agent")
     return OpenAIProviderClient(
         agent=dict(agent),

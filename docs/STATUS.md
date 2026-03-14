@@ -620,3 +620,23 @@ Result: BLOCKED (BYOK key not provided; network calls disallowed by gate)
 - Shared primitives captured in ui-tauri\src\app.css ("UI Primitives (Dashboard Design Language)")
 
   - P5.7 Dry-run test binding PASS (deterministic trace): docs\evidence\P5_7_DRYRUN_BIND_VERIFY_20260226-030311
+
+## 2026-03-15 Runtime Hotfix Snapshot (in progress)
+- Scope: narrow runtime hotfix only (no architecture expansion).
+- Triggered findings:
+  - Installed profile could run with worker effectively off when flag was unset.
+  - Worker ON produced visible speed gain, but memory footprint remained above desired lane target.
+- Applied code slice:
+  - `ui-tauri/src-tauri/src/worker_dispatch.rs`
+    - env-unset default changed to worker enabled; explicit OFF values remain supported.
+  - `src/providers/factory.py`
+    - provider imports switched to lazy-load at provider factory call sites.
+  - `src/vertex/client.py`
+    - heavy Google/Vertex imports deferred to on-demand call paths.
+- Expected effect:
+  - Installed runtime aligns with single fast default profile.
+  - Lower worker baseline memory pressure on non-Vertex-heavy paths.
+- Pending verification before release cut:
+  - packaged startup/menu transition behavior under default profile,
+  - worker decision logs confirm stable takeover on whitelist ops,
+  - memory recheck against deferred optimization target (`<250 MB` remains future target unless proven now).

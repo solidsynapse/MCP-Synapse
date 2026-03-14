@@ -8,11 +8,6 @@ from threading import Lock
 from time import monotonic
 from typing import Any
 
-from google.api_core.exceptions import InvalidArgument, NotFound, PermissionDenied, ResourceExhausted
-from google.oauth2.service_account import Credentials
-from vertexai import init as vertex_init
-from vertexai.preview.generative_models import GenerationConfig, GenerativeModel
-
 from src.config.manager import ConfigManager
 
 logger = logging.getLogger(__name__)
@@ -28,7 +23,7 @@ class APIError(Exception): ...
 
 class VertexAIClient:
     _CREDENTIALS_CACHE_TTL_SECONDS = 300.0
-    _credentials_cache: dict[str, tuple[float, Credentials]] = {}
+    _credentials_cache: dict[str, tuple[float, Any]] = {}
     _credentials_cache_lock = Lock()
 
     def __init__(
@@ -57,7 +52,10 @@ class VertexAIClient:
             )
         self.price_in = float(price_per_1m_input)
         self.price_out = float(price_per_1m_output)
-        creds: Credentials | None = None
+        from vertexai import init as vertex_init
+        from vertexai.preview.generative_models import GenerativeModel
+
+        creds: Any | None = None
         if credentials_path:
             p = Path(credentials_path).expanduser().resolve()
             if not p.exists():
@@ -73,7 +71,9 @@ class VertexAIClient:
             raise APIError(self._format_provider_error("Failed to initialize Vertex model", exc)) from exc
 
     @classmethod
-    def _load_cached_credentials(cls, credential_path: Path) -> Credentials:
+    def _load_cached_credentials(cls, credential_path: Path) -> Any:
+        from google.oauth2.service_account import Credentials
+
         cache_key = str(credential_path).lower()
         now = monotonic()
         with cls._credentials_cache_lock:
@@ -122,6 +122,8 @@ class VertexAIClient:
         return payload
 
     def _classify_error(self, exc: Exception, payload: dict[str, Any]) -> str:
+        from google.api_core.exceptions import InvalidArgument, NotFound, PermissionDenied, ResourceExhausted
+
         text = str(payload.get("message") or "").lower()
         if isinstance(exc, ResourceExhausted):
             return "quota/rate-limit issue"
@@ -165,6 +167,9 @@ class VertexAIClient:
         timeout: int = 30,
         max_output_tokens: int | None = None,
     ) -> dict[str, Any]:
+        from google.api_core.exceptions import PermissionDenied, ResourceExhausted
+        from vertexai.preview.generative_models import GenerationConfig
+
         request_kwargs: dict[str, Any] = {}
         if isinstance(max_output_tokens, int) and max_output_tokens > 0:
             request_kwargs["generation_config"] = GenerationConfig(

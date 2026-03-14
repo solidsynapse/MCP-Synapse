@@ -68,7 +68,7 @@ fn worker_enabled() -> bool {
                 .map(|v| v > 0)
                 .unwrap_or(false)
         }
-        Err(_) => false,
+        Err(_) => true,
     }
 }
 

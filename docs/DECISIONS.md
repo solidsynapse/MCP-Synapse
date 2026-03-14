@@ -951,3 +951,21 @@ P4 UI PREP is ALLOWED when:
   - Connections detail interaction rough edge (Wave-2A residual),
   - worker-on RAM optimization target (<250 MB),
   - `MCP_SYNAPSE_PYTHON` boundary tightening.
+
+### 2026-03-15 Runtime Hotfix Checkpoint (non-normative; no new decision)
+- This checkpoint records implementation alignment only; it does not add or change normative policy.
+- Trigger:
+  - Installed runtime showed menu transitions clustering near legacy subprocess latency when worker flag was not explicitly set.
+  - Manual ON run reconfirmed speed gain, but worker memory footprint remained high for this lane target.
+- Applied narrow hotfix scope:
+  - `ui-tauri/src-tauri/src/worker_dispatch.rs`
+    - `worker_enabled()` now treats env-unset as enabled, while explicit OFF values (`0/false/off/no`) remain supported.
+  - `src/providers/factory.py`
+    - provider client imports moved to lazy-load at factory call sites.
+  - `src/vertex/client.py`
+    - Google/Vertex imports moved from module-level to on-demand import points.
+- Intended outcome:
+  - Preserve single fast default runtime stance in installed profile.
+  - Reduce worker baseline memory pressure by avoiding unnecessary heavy provider imports on startup path.
+- Verification state:
+  - packaged ON/OFF behavior and memory deltas must be revalidated before release cut.
