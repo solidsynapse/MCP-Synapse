@@ -1,0 +1,7 @@
+﻿# SHA256 sums for v0.6.1 artifacts
+# Format: <sha256>  <filename>
+# Public release upload assets (end-user downloads)
+CD195956A3C7F025A59621D791CBDB56A720218A318E0FE003D03FE40EC0F6BC  MCP Synapse_0.6.1_x64-setup.exe
+6C41740E4CDFCE016151A7D199BE6EB9D9F397CA0F7A679079F83D2991694854  MCP Synapse_0.6.1_x64_en-US.msi
+# Internal build artifact (not part of public release uploads)
+9CE0C44CD17C2936C8ECD02F5429187B7E0186B0AC9CE46723E4EF729512FCC8  mcp-synapse.exe
