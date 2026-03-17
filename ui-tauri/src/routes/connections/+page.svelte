@@ -117,6 +117,8 @@
     created_at?: string;
   };
 
+  type DetailsConfigTab = "cursor" | "vscode" | "raw";
+
   let connections = $state<Connection[]>([]);
   let pageStatus = $state<"idle" | "loading" | "ready" | "error">("idle");
   const CONNECTIONS_OP = "connections.list";
@@ -136,6 +138,7 @@
 
   let detailsOpen = $state(false);
   let detailsId = $state<string | null>(null);
+  let detailsConfigTab = $state<DetailsConfigTab>("cursor");
 
   let deleteConfirmOpen = $state(false);
   let deleteConfirmId = $state<string | null>(null);
@@ -177,6 +180,11 @@
   let schemaHintRequestSeq = 0;
   let schemaHintLoadingProviderId = "";
   const copyConfigInFlight = new Map<string, Promise<string>>();
+  const DETAILS_CONFIG_TABS: Array<{ id: DetailsConfigTab; label: string }> = [
+    { id: "cursor", label: "Cursor / Windsurf" },
+    { id: "vscode", label: "VS Code" },
+    { id: "raw", label: "Other / Raw" },
+  ];
   function formatErrors(errors: string[] | undefined) {
     if (!errors || errors.length === 0) return "Unknown error.";
     return errors.join("; ");
@@ -218,6 +226,53 @@
     const code = String(error?.code || "schema_hint_failed").trim();
     const message = String(error?.message || "Schema hint request failed.").trim();
     return `${code}: ${message}`;
+  }
+
+  function safeParseConfigText(text: string) {
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  function formatConfigText(value: unknown) {
+    return JSON.stringify(value, null, 2);
+  }
+
+  function buildCursorConfigText(rawText: string) {
+    const parsed = safeParseConfigText(rawText);
+    if (!parsed || typeof parsed !== "object" || !parsed.mcpServers) return rawText;
+    return formatConfigText(parsed);
+  }
+
+  function buildVsCodeConfigText(rawText: string) {
+    const parsed = safeParseConfigText(rawText);
+    const rawServers = parsed?.mcpServers;
+    if (!rawServers || typeof rawServers !== "object") return rawText;
+
+    const servers: Record<string, { type: string; url: string }> = {};
+    for (const [name, value] of Object.entries(rawServers)) {
+      if (!value || typeof value !== "object") continue;
+      const entry = value as Record<string, unknown>;
+      const url = String(entry.url || "").trim();
+      if (!url) continue;
+      const type = String(entry.type || "sse").trim() || "sse";
+      servers[name] = { type, url };
+    }
+    return formatConfigText({ servers });
+  }
+
+  function getDetailsConfigText(rawText: string, tab: DetailsConfigTab) {
+    if (tab === "vscode") return buildVsCodeConfigText(rawText);
+    if (tab === "cursor") return buildCursorConfigText(rawText);
+    return rawText;
+  }
+
+  function getDetailsCopyLabel(tab: DetailsConfigTab) {
+    if (tab === "vscode") return "VS Code";
+    if (tab === "cursor") return "Cursor / Windsurf";
+    return "Raw";
   }
 
   function formatWarnings(warnings: string[] | undefined) {
@@ -946,17 +1001,27 @@
     }
   }
 
-  async function copyConnectionDebugConfig(connectionId: string) {
-    if (busyById[connectionId] === true) return;
-    busyById = { ...busyById, [connectionId]: true };
+  async function copyDetailsConfig(connection: Connection, tab: DetailsConfigTab) {
+    if (busyById[connection.id] === true) return;
+    busyById = { ...busyById, [connection.id]: true };
     setBanner("idle", "");
 
-    const text = await fetchConnectionConfig(connectionId, true, "copy_debug");
-    if (!text) return;
+    let rawText = connection.configText || "";
+    if (!rawText) {
+      rawText = await fetchConnectionConfig(connection.id, false, "details_open");
+      if (rawText) {
+        connections = connections.map((item) => (item.id === connection.id ? { ...item, configText: rawText } : item));
+      }
+    }
+    if (!rawText) {
+      busyById = { ...busyById, [connection.id]: false };
+      return;
+    }
 
+    const text = getDetailsConfigText(rawText, tab);
     try {
       await navigator.clipboard.writeText(text);
-      setBanner("success", "Debug config copied.");
+      setBanner("success", `${getDetailsCopyLabel(tab)} config copied to clipboard.`);
     } catch {
       const el = document.createElement("textarea");
       el.value = text;
@@ -967,9 +1032,9 @@
       el.select();
       document.execCommand("copy");
       document.body.removeChild(el);
-      setBanner("success", "Debug config copied.");
+      setBanner("success", `${getDetailsCopyLabel(tab)} config copied to clipboard.`);
     } finally {
-      busyById = { ...busyById, [connectionId]: false };
+      busyById = { ...busyById, [connection.id]: false };
     }
   }
 
@@ -981,6 +1046,7 @@
   async function openDetails(connectionId: string) {
     detailsId = connectionId;
     detailsOpen = true;
+    detailsConfigTab = "cursor";
     const existing = connections.find((connection) => connection.id === connectionId);
     if (existing?.configText) return;
     const text = await fetchConnectionConfig(connectionId, false, "details_open");
@@ -994,6 +1060,7 @@
   function closeDetails() {
     detailsOpen = false;
     detailsId = null;
+    detailsConfigTab = "cursor";
   }
 
   function openDeleteConfirm(connectionId: string) {
@@ -1816,19 +1883,31 @@
           </div>
           <div class="mt-3 ui-card ui-pad-md" style="background-color: var(--surface-2);">
             <div class="ui-subtitle">Config</div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              {#each DETAILS_CONFIG_TABS as tab (tab.id)}
+                <button
+                  type="button"
+                  class="ui-focus rounded-md border px-3 py-2 text-xs font-medium transition-colors"
+                  style={`border-color: ${detailsConfigTab === tab.id ? "var(--accent-base)" : "var(--border-subtle)"}; background-color: ${detailsConfigTab === tab.id ? "var(--accent-dim)" : "transparent"}; color: ${detailsConfigTab === tab.id ? "var(--text-primary)" : "var(--text-muted)"};`}
+                  onclick={() => (detailsConfigTab = tab.id)}
+                >
+                  {tab.label}
+                </button>
+              {/each}
+            </div>
             <pre
               class="mt-2 overflow-auto rounded-md border p-3 text-[11px] leading-4"
               style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary); max-height: 260px;"
-            >{selected.configText}</pre>
+            >{getDetailsConfigText(selected.configText || "", detailsConfigTab)}</pre>
             <div class="mt-3 flex justify-end">
               <button
                 type="button"
                 class="ui-focus h-9 rounded-md border px-3 text-xs font-semibold transition-colors hover:bg-white/5"
                 style="border-color: var(--border-subtle); background-color: transparent; color: var(--text-primary);"
                 disabled={busyById[selected.id] === true}
-                onclick={() => copyConnectionDebugConfig(selected.id)}
+                onclick={() => copyDetailsConfig(selected, detailsConfigTab)}
               >
-                Copy MCP Config (Debug)
+                Copy {DETAILS_CONFIG_TABS.find((tab) => tab.id === detailsConfigTab)?.label ?? "Config"}
               </button>
             </div>
           </div>

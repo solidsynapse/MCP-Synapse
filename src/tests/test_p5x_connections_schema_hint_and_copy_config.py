@@ -49,7 +49,16 @@ def test_p5x_copy_config_url_only_and_verbose_modes() -> None:
     url_only = mgr.copy_connection_config({"connection_id": "c1"})
     assert url_only["ok"] is True
     cfg = json.loads(url_only["config_text"])
-    assert cfg == {"mcpServers": {"ConnOne": {"url": "http://localhost:5123/sse"}}}
+    assert cfg == {
+        "mcpServers": {
+            "ConnOne": {
+                "url": "http://localhost:5123/sse",
+                "type": "sse",
+                "capabilities": {"tools": {}},
+                "x_mcp_synapse": {"capability_types": ["text"]},
+            }
+        }
+    }
     assert "provider_id" not in url_only["config_text"]
     assert "credentials_path" not in url_only["config_text"]
 
@@ -57,4 +66,7 @@ def test_p5x_copy_config_url_only_and_verbose_modes() -> None:
     assert verbose["ok"] is True
     cfg2 = json.loads(verbose["config_text"])
     assert cfg2["mcpServers"]["ConnOne"]["url"] == "http://localhost:5123/sse"
+    assert cfg2["mcpServers"]["ConnOne"]["type"] == "sse"
+    assert cfg2["mcpServers"]["ConnOne"]["capabilities"] == {"tools": {}}
+    assert cfg2["mcpServers"]["ConnOne"]["x_mcp_synapse"] == {"capability_types": ["text"]}
     assert cfg2["mcpServers"]["ConnOne"]["provider_id"] == "openai"

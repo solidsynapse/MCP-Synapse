@@ -27,6 +27,7 @@
     tokens_input: number | null;
     tokens_output: number | null;
     cost_usd: number | null;
+    cost_source: string | null;
   };
 
   type ProviderId = "all" | "openai" | "azure_openai" | "vertex" | "bedrock" | "huggingface" | "ollama";
@@ -225,6 +226,27 @@
     return modelId || undefined;
   }
 
+  function normalizedCostSource(row: UsageRow): "ACTUAL" | "ESTIMATED" | "UNKNOWN" {
+    const raw = String(row.cost_source || "").trim().toUpperCase();
+    if (raw === "ACTUAL") return "ACTUAL";
+    if (raw === "ESTIMATED") return "ESTIMATED";
+    return "UNKNOWN";
+  }
+
+  function pricingConfidence(row: UsageRow): "HIGH" | "LOW" {
+    const source = normalizedCostSource(row);
+    if (source === "ACTUAL") return "HIGH";
+    return "LOW";
+  }
+
+  function costTooltip(row: UsageRow): string | undefined {
+    if (row.cost_source == null) return undefined;
+    const rawSource = String(row.cost_source || "").trim();
+    if (!rawSource) return undefined;
+    const source = normalizedCostSource(row);
+    return `Cost: ${formatMoneyPrecise(row.cost_usd)}\nSource: ${source}\nConfidence: ${pricingConfidence(row)}`;
+  }
+
   function bannerClass(kind: BannerKind) {
     if (kind === "success") return "border-emerald-900/40 bg-emerald-400/10 text-emerald-200";
     if (kind === "danger") return "border-rose-900/40 bg-rose-500/10 text-rose-200";
@@ -329,6 +351,7 @@
             tokens_input: typeof row?.tokens_input === "number" ? row.tokens_input : null,
             tokens_output: typeof row?.tokens_output === "number" ? row.tokens_output : null,
             cost_usd: typeof row?.cost_usd === "number" ? row.cost_usd : null,
+            cost_source: typeof row?.cost_source === "string" ? row.cost_source : null,
           })),
         };
       });
@@ -472,7 +495,7 @@
               <td class="px-4 py-3" style="color: var(--text-muted);">{row.latency_ms ?? "N/A"}</td>
               <td class="px-4 py-3" style="color: var(--text-muted);">{row.tokens_input ?? "N/A"}</td>
               <td class="px-4 py-3" style="color: var(--text-muted);">{row.tokens_output ?? "N/A"}</td>
-              <td class="px-4 py-3" style="color: var(--text-muted);">{formatMoneyPrecise(row.cost_usd)}</td>
+              <td class="px-4 py-3" style="color: var(--text-muted);" title={costTooltip(row)}>{formatMoneyPrecise(row.cost_usd)}</td>
             </tr>
           {/each}
         {/if}

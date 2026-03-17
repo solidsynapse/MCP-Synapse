@@ -6,8 +6,8 @@ This file tracks the active working requirement set for `.gsd/`.
 
 | Status | Count |
 |---|---:|
-| Delivered | 1 |
-| Active | 16 |
+| Delivered | 2 |
+| Active | 15 |
 | Deferred | 3 |
 | Out of scope | 3 |
 | Total tracked | 23 |
@@ -16,6 +16,7 @@ This file tracks the active working requirement set for `.gsd/`.
 
 | ID | Requirement | Class | Delivered in | Notes |
 |---|---|---|---|---|
+| R014 | Post-RC performance smoke | quality-attribute | M003/S03 | Delivered through the M003 performance baseline closure, including memory recheck and documented lane-target acceptance. |
 | R015 | Full English documentation pack | launchability | M003/S04 | Delivered through install/download, release-notes, feature reference, root user guide, web user guide, and legal/compliance minimum pack closure. |
 
 ## Active
@@ -35,7 +36,6 @@ This file tracks the active working requirement set for `.gsd/`.
 | R011 | Debuggability minimum is present and verified | operability | M002/S02 | Promoted from the RC-EXT open set. |
 | R012 | Packaging/versioning readiness is closed with evidence | launchability | M002/S03 | Must match archive-defined release progression. |
 | R013 | Archive-aligned milestone progression remains authoritative | constraint | M001/S01 | `.gsd/` mirrors the archive milestone model instead of replacing it. |
-| R014 | Post-RC performance smoke | quality-attribute | M003/S03 | Promoted from deferred to active because it is confirmed M003 performance baseline scope. |
 | R022 | Release integrity and distribution policy is established | launchability | M002/S03 | Tag, SHA256, changelog, unsigned disclosure, and trademark baseline stay explicit. |
 | R023 | BYOK + local-only boundary is preserved and verified | compliance/security | M001/S01 | Enforced by decision carry-forward now and release-surface verification later. |
 

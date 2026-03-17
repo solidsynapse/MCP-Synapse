@@ -28,6 +28,12 @@ _DEFAULT_VERTEX_PRICES: tuple[tuple[str, tuple[float, float]], ...] = (
     ("gemini-3-pro", (1.25, 5.00)),
 )
 
+_DEFAULT_PRICES: dict[str, tuple[tuple[str, tuple[float, float]], ...]] = {
+    "openai": _DEFAULT_OPENAI_PRICES,
+    "azure_openai": _DEFAULT_AZURE_PRICES,
+    "vertex": _DEFAULT_VERTEX_PRICES,
+}
+
 
 def _parse_positive_float(value: Any) -> float | None:
     try:
@@ -55,15 +61,7 @@ def _coerce_float(value: Any) -> float | None:
 
 def _match_default_prices(provider_id: str, model_id: str) -> tuple[float | None, float | None]:
     model = str(model_id or "").strip().lower()
-    table: tuple[tuple[str, tuple[float, float]], ...]
-    if provider_id == "openai":
-        table = _DEFAULT_OPENAI_PRICES
-    elif provider_id == "azure_openai":
-        table = _DEFAULT_AZURE_PRICES
-    elif provider_id == "vertex":
-        table = _DEFAULT_VERTEX_PRICES
-    else:
-        table = ()
+    table = _DEFAULT_PRICES.get(provider_id, ())
     for prefix, prices in table:
         if model.startswith(prefix):
             return prices
@@ -151,14 +149,14 @@ def _load_litellm_runtime() -> tuple[Any | None, Any | None]:
     except Exception:
         return None, None
 
-    completion_cost = getattr(litellm, "completion_cost", None)
-    if not callable(completion_cost):
+    cost_per_token = getattr(litellm, "cost_per_token", None)
+    if not callable(cost_per_token):
         return litellm, None
-    return litellm, completion_cost
+    return litellm, cost_per_token
 
 
-def _try_completion_cost(
-    completion_cost: Any,
+def _try_cost_per_token(
+    cost_per_token: Any,
     *,
     model_name: str,
     provider_id: str,
@@ -180,15 +178,33 @@ def _try_completion_cost(
     )
     for kwargs in attempts:
         try:
-            result = completion_cost(**kwargs)
+            result = cost_per_token(**kwargs)
         except TypeError:
             continue
         except Exception:
             return None
+        if isinstance(result, tuple) and len(result) == 2:
+            input_cost = _coerce_float(result[0])
+            output_cost = _coerce_float(result[1])
+            if input_cost is None or output_cost is None:
+                continue
+            return input_cost + output_cost
         value = _coerce_float(result)
         if value is not None:
             return value
     return None
+
+
+def _estimate_cost_from_unit_prices(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    unit_in: float | None,
+    unit_out: float | None,
+) -> float | None:
+    if unit_in is None or unit_out is None:
+        return None
+    return (float(input_tokens) * (unit_in / 1_000_000.0)) + (float(output_tokens) * (unit_out / 1_000_000.0))
 
 
 def normalize_cost_with_litellm(
@@ -215,10 +231,6 @@ def normalize_cost_with_litellm(
     if total_tokens <= 0:
         return {"cost_usd": 0.0, "cost_source": "ESTIMATED"}
 
-    litellm, completion_cost = _load_litellm_runtime()
-    if litellm is None or completion_cost is None:
-        return {"cost_usd": None, "cost_source": "UNKNOWN"}
-
     unit_in, unit_out = _resolve_provider_prices(
         provider_id=provider_id,
         model_id=model_id,
@@ -226,6 +238,17 @@ def normalize_cost_with_litellm(
         price_per_1m_input=price_per_1m_input,
         price_per_1m_output=price_per_1m_output,
     )
+    manual_cost = _estimate_cost_from_unit_prices(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        unit_in=unit_in,
+        unit_out=unit_out,
+    )
+
+    litellm, cost_per_token = _load_litellm_runtime()
+    if litellm is None or cost_per_token is None:
+        return {"cost_usd": None, "cost_source": "UNKNOWN"}
+
     model_name, custom_payload = _custom_model_payload(
         provider_id=provider_id,
         model_id=model_id,
@@ -240,13 +263,15 @@ def normalize_cost_with_litellm(
         except Exception:
             return {"cost_usd": None, "cost_source": "UNKNOWN"}
 
-    cost = _try_completion_cost(
-        completion_cost,
+    cost = _try_cost_per_token(
+        cost_per_token,
         model_name=model_name,
         provider_id=provider_id,
         tokens_input=input_tokens,
         tokens_output=output_tokens,
     )
     if cost is None:
-        return {"cost_usd": None, "cost_source": "UNKNOWN"}
+        if manual_cost is None:
+            return {"cost_usd": None, "cost_source": "UNKNOWN"}
+        return {"cost_usd": float(f"{manual_cost:.6f}"), "cost_source": "ESTIMATED"}
     return {"cost_usd": float(f"{cost:.6f}"), "cost_source": "ESTIMATED"}

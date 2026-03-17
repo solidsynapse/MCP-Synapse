@@ -12,6 +12,7 @@
 - M003/S01 litellm ADR gate: COMPLETE (D-040 recorded)
 - M003/S01 implementation plan: COMPLETE (`.gsd/milestones/M003/S01-PLAN.md` written)
 - M003/S01 backend cost normalization: COMPLETE (PASS; evidence: docs\evidence\M003_S01_20260317-072221)
+- M003/S01 litellm cost_per_token + manual fallback fix: COMPLETE (PASS; evidence: docs\evidence\M003_S01_20260317-072221\litellm_fix.txt)
 - M003/S01 cost_source persistence + Usage History badge: COMPLETE (PASS; evidence: docs\evidence\M003_S01_20260317-072221)
 - M003/S02 Bedrock: BLOCKED-DEFERRED (model support mismatch + quota gap)
 - M003/S03 kickoff: COMPLETE (memory recheck commands prepared; security baseline reviewed; evidence: docs\evidence\M003_S03_20260317-083305)
@@ -25,6 +26,14 @@
 - M003/S04 legal/compliance minimum pack: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736\legal_pack_summary.txt)
 - M003/S04 D-039 public surface cleanup: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736\cleanup_summary.txt)
 - M003/S04: COMPLETE
-- Current milestone: M003
-- Active slice: S05
-- Next action: Begin M003/S05 - MCP capability types + IDE compatibility matrix
+- M003/S05 capability registry + IDE manual test plan: COMPLETE (PASS; evidence: docs\evidence\M003_S05_20260317-204457)
+- M003/S05 IDE-specific config tabs UX fix: COMPLETE (PASS; evidence: docs\evidence\M003_S05_20260317-204457\ide_tabs_summary.txt)
+- M003/S05 cost-source tooltip UX fix: COMPLETE (PASS; evidence: docs\evidence\M003_S05_20260317-204457\cost_tooltip_summary.txt)
+- M003/S05 IDE compatibility matrix: COMPLETE (PASS for VS Code, Cursor, and TRAE; Claude Code CLI skipped with documented environment/budget reason; evidence: docs\evidence\M003_S05_20260317-204457\ide_compatibility_matrix.txt)
+- Post-M003 usage cost display + Summary tooltip fix: COMPLETE (PASS; evidence: docs\evidence\M003_S05_20260317-204457\cost_display_fix.txt)
+- M003/S05: COMPLETE
+- M003: COMPLETE
+- Current milestone: None
+- Active slice: None
+- Next milestone: M004
+- Next action: Begin M004 planning

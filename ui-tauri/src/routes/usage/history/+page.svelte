@@ -142,11 +142,18 @@
     return "Unknown";
   }
 
-  function pricingDotStyle(row: UsageRow): string {
+  function pricingConfidence(row: UsageRow): "HIGH" | "LOW" {
     const source = normalizedCostSource(row);
-    if (source === "ACTUAL") return "background-color: #34d399;";
-    if (source === "ESTIMATED") return "background-color: #fbbf24;";
-    return "background-color: #94a3b8;";
+    if (source === "ACTUAL") return "HIGH";
+    return "LOW";
+  }
+
+  function costTooltip(row: UsageRow): string | undefined {
+    if (row.cost_source == null) return undefined;
+    const rawSource = String(row.cost_source || "").trim();
+    if (!rawSource) return undefined;
+    const source = normalizedCostSource(row);
+    return `Cost: ${formatMoneyPrecise(row.cost_usd)}\nSource: ${source}\nConfidence: ${pricingConfidence(row)}`;
   }
 
   function tokenRangeLabel(range: TokenRangeId): string {
@@ -691,19 +698,7 @@
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.latency_ms ?? "N/A"}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.tokens_input ?? "N/A"}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.tokens_output ?? "N/A"}</td>
-              <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">
-                <div class="flex items-center gap-2">
-                  <span>{formatMoneyPrecise(row.cost_usd)}</span>
-                  <span
-                    class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
-                    style="border-color: var(--border-subtle); background-color: rgba(255, 255, 255, 0.03); color: var(--text-primary);"
-                    title={`Pricing source: ${pricingStatus(row)}`}
-                  >
-                    <span class="inline-block h-2 w-2 rounded-full" style={pricingDotStyle(row)}></span>
-                    <span>{pricingStatus(row)}</span>
-                  </span>
-                </div>
-              </td>
+              <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);" title={costTooltip(row)}>{formatMoneyPrecise(row.cost_usd)}</td>
             </tr>
           {/each}
         {/if}

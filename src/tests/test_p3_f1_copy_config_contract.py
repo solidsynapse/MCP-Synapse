@@ -24,6 +24,7 @@ def test_p3_f1_builds_expected_shape_and_is_safe(monkeypatch: pytest.MonkeyPatch
     agent = {
         "id": "a1",
         "name": "AgentOne",
+        "provider_id": "openai",
         "project_id": "p",
         "location": "l",
         "model_id": "m",
@@ -32,18 +33,30 @@ def test_p3_f1_builds_expected_shape_and_is_safe(monkeypatch: pytest.MonkeyPatch
         "price_per_1m_output": 0.0,
     }
     cfg = build_mcp_config(agent)
-    assert cfg == {"mcpServers": {"AgentOne": {"url": "http://localhost:5055/sse"}}}
+    assert cfg == {
+        "mcpServers": {
+            "AgentOne": {
+                "url": "http://localhost:5055/sse",
+                "type": "sse",
+                "capabilities": {"tools": {}},
+                "x_mcp_synapse": {"capability_types": ["text"]},
+            }
+        }
+    }
 
     s = build_mcp_config_json(agent)
     assert '"project_id"' not in s
     assert '"location"' not in s
     assert '"model_id"' not in s
     assert "http://localhost:5055/sse" in s
+    assert '"type": "sse"' in s
+    assert '"capabilities"' in s
+    assert '"tools"' in s
 
 
 def test_p3_f1_deterministic_json(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_network_guard(monkeypatch)
-    agent = {"name": "A", "port": 5000, "project_id": "x", "location": "y", "model_id": "z"}
+    agent = {"name": "A", "port": 5000, "provider_id": "vertex", "project_id": "x", "location": "y", "model_id": "z"}
     a = build_mcp_config_json(agent)
     b = build_mcp_config_json(dict(agent))
     assert a == b

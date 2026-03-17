@@ -11,6 +11,8 @@ from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
+from src.mcp_server.copy_config_p3_f1 import build_mcp_server_entry
+
 
 logger = logging.getLogger(__name__)
 
@@ -209,8 +211,6 @@ class MCPAgentServer:
     def get_mcp_config(self) -> dict:
         return {
             "mcpServers": {
-                self._name: {
-                    "url": f"http://localhost:{self._port}/sse",
-                }
+                self._name: build_mcp_server_entry(port=self._port)
             }
         }

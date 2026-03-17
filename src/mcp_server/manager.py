@@ -25,6 +25,7 @@ from src.data.credentials import CredentialManager
 from src.data.vault import VaultManager
 from src.data.usage_db import UsageDatabase
 from src.mcp_server.agent_server import MCPAgentServer
+from src.mcp_server.copy_config_p3_f1 import build_mcp_server_entry
 from src.mcp_server.pipeline_v1 import (
     ExecutionRequestV1,
     PreflightGuardV1,
@@ -2829,7 +2830,10 @@ class ServerManager:
             port = _extract_port(connection)
             if port is None:
                 return {}
-            return {"url": f"http://localhost:{port}/sse"}
+            return build_mcp_server_entry(
+                port=port,
+                provider_id=connection.get("provider_id"),
+            )
 
         def build_debug_entry(connection: dict) -> dict[str, object]:
             entry: dict[str, object] = dict(build_url_entry(connection))

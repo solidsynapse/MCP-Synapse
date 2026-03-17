@@ -74,3 +74,5 @@ coverage/
 .cache/
 
 mcp-router.pytest_tmp/
+
+.pytest_tmp/
