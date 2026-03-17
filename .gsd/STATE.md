@@ -34,7 +34,10 @@
 - M003/S05: COMPLETE
 - M003: COMPLETE
 - M003 closure sync revalidation: COMPLETE (2026-03-18; `.gsd/` remains aligned, `v0.7.1` release-doc scaffold created, archive roadmap sync still pending because this task restricted `docs/` writes to the release folder)
-- Current milestone: None
-- Active slice: None
+- D-037 update: COMPLETE (2026-03-18; REST adapter moved from `v1.1.x` to `v0.9.x/M004`, `v1.1.x` now covers IDE compatibility polish + Routing Advisor + WebSocket/streaming adapter)
+- M004 planning context: COMPLETE (`.gsd/milestones/M004/M004-CONTEXT.md` written)
+- D-041 recorded: COMPLETE (REST adapter positioned as a strategic expansion milestone)
+- Current milestone: M004
+- Active slice: Planning
 - Next milestone: M004
 - Next action: Begin M004 planning

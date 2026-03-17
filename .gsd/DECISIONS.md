@@ -181,14 +181,15 @@ P4 UI PREP is ALLOWED when:
   - Milestone progression is normative:
     1) `v0.7.x` -> release hardening (DONE)
     2) `v0.8.x` -> capability depth + provider wave 1 (cost transparency, Bedrock proof, documentation pack, performance/security baseline)
-    3) `v0.9.x` -> provider wave 2 + release productization (Anthropic, Groq, GLM, Sigstore, auto-update)
+    3) `v0.9.x` -> provider wave 2 + budget enforcement + auto-update + REST adapter snapshot
     4) `v1.0.x` -> pro developer surface (Chain Editor, advanced routing with new ADR, Vault expansion, Persona Studio)
-    5) `v1.1.x` -> REST adapter + IDE compatibility + Routing Advisor
+    5) `v1.1.x` -> IDE compatibility polish + Routing Advisor + WebSocket/streaming adapter
     6) `v1.2.x` -> Chain graph editor + post-v1.0 polish
     7) `v1.3+` -> domain-agnostic migration + vertical adapters
 - Rationale:
   - Provider waves and pro-surface features must land before the domain-agnostic migration.
   - Starting migration after the provider/product surface is deeper creates a cleaner contract boundary and avoids building the same expansion set twice.
+  - REST adapter is the first visible signal of the domain-agnostic expansion and is strategically central to product positioning: `Any API. Any model. One gateway.`
 - Constraints (normative):
   - Patch bump (`0.6.1` etc.) is hotfix/regression-only.
   - Minor bump (`0.7.0`, `0.8.0`, `0.9.0`, `1.0.0`, `1.1.0`, `1.2.0`) requires closure evidence for the corresponding milestone package.
@@ -254,4 +255,18 @@ P4 UI PREP is ALLOWED when:
 - Boundary constraint:
   - D-033 remains binding.
   - litellm is authorized only for local cost normalization logic and must not introduce any cloud call or shared-service behavior.
+
+## D-041 - REST adapter as a strategic expansion milestone
+
+- Date: 2026-03-18
+- Decision:
+  - The REST adapter is a strategic expansion milestone, not a minor feature.
+  - It belongs in the `v0.9.x / M004` lane as part of the first visible domain-agnostic expansion signal.
+- Positioning:
+  - `Any API. Any model. One gateway. Full audit trail.`
+- Constraints:
+  - The REST adapter must enter through the existing Connections product surface, not a separate primary navigation surface.
+  - It must preserve D-024 and D-029 thin-shell/core boundaries.
+  - It must preserve D-033 BYOK + local-only rules and must not become a hosted proxy or shared-service path.
+  - The `v0.9.x` lane authorizes a REST adapter snapshot only; WebSocket/streaming adapters remain later-lane work.
 
