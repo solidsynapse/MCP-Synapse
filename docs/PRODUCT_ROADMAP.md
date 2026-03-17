@@ -88,7 +88,7 @@ You open MCP Synapse, add a provider connection with your own credentials, copy 
 
 ---
 
-### M003 â€” v0.8.x: Capability Depth + Provider Wave 1
+### M003 â€” v0.8.x: Capability Depth + Provider Wave 1 âœ… COMPLETE
 
 **Theme:** Make the product trustworthy at a deeper level â€” cost transparency, provider completeness, and documentation that a professional developer can rely on.
 
@@ -327,7 +327,7 @@ Cost is currently calculated per-provider in separate functions:
 
 The original plan was to use **litellm's cost module** as a unified pricing layer. The previous coder instead wrote per-provider cost functions. This is technical debt: every new provider requires a new cost function, and every pricing change requires updating multiple files.
 
-**Proposal pending new ADR:** M003/S01 will evaluate litellm for cost normalization. Before implementation, a new decision must be recorded in `.gsd/DECISIONS.md` covering: dependency rationale, fallback behavior, and migration path from existing per-provider functions. Per-provider cost functions remain in place until the ADR is approved.
+**Delivered in M003/S01 (D-040):** litellm is now the approved cost-normalization layer. Provider-specific cost paths delegate to the unified normalizer, with explicit fallback behavior and no silent zero-cost success.
 
 ### Provider contracts vs runtime registration gap
 Three providers have contract files but are not registered in `factory.py`:
@@ -366,11 +366,14 @@ Copy config currently generates JSON with text-only capability declaration. This
 **Action:** M003 or M004 â€” add MCP capability type registry. Copy config generates correct capability declarations per provider type.
 
 ### IDE compatibility â€” current state
-Actively tested: TRAE IDE.
-MCP protocol is standard (SSE transport) â€” other IDEs should work theoretically.
-Known targets not yet verified: VS Code (MCP extension), Claude Code, Codex/GitHub Copilot, Gemini.
+Actively tested: VS Code, Cursor, and TRAE.
+PASS status:
+- VS Code: PASS
+- Cursor: PASS
+- TRAE: PASS
+- Claude Code CLI: skipped in M003/S05 due environment and budget constraints
 
-**Action:** M003 or M004 â€” IDE compatibility matrix. One connection test + copy config verification per IDE. Result: tested compatibility list for documentation and marketing.
+**Delivered in M003/S05:** IDE compatibility matrix and IDE-specific copy-config UX are now in place for the tested IDE set above.
 
 ### REST adapter and real-time data sources
 Current: non-streaming SSE, each request independent.

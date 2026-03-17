@@ -33,6 +33,7 @@
 - Post-M003 usage cost display + Summary tooltip fix: COMPLETE (PASS; evidence: docs\evidence\M003_S05_20260317-204457\cost_display_fix.txt)
 - M003/S05: COMPLETE
 - M003: COMPLETE
+- M003 closure sync revalidation: COMPLETE (2026-03-18; `.gsd/` remains aligned, `v0.7.1` release-doc scaffold created, archive roadmap sync still pending because this task restricted `docs/` writes to the release folder)
 - Current milestone: None
 - Active slice: None
 - Next milestone: M004

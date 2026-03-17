@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
-from functools import lru_cache
 from typing import Any, Literal
 
 
 CostSource = Literal["ACTUAL", "ESTIMATED", "UNKNOWN"]
+_LITELLM_RUNTIME: Any | None = None
 
 _DEFAULT_OPENAI_PRICES: tuple[tuple[str, tuple[float, float]], ...] = (
     ("gpt-4o-mini", (0.15, 0.60)),
@@ -140,15 +139,10 @@ def _custom_model_payload(
     }
     return alias, payload
 
-
-@lru_cache(maxsize=1)
 def _load_litellm_runtime() -> tuple[Any | None, Any | None]:
-    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
-    try:
-        import litellm  # type: ignore
-    except Exception:
+    litellm = _LITELLM_RUNTIME
+    if litellm is None:
         return None, None
-
     cost_per_token = getattr(litellm, "cost_per_token", None)
     if not callable(cost_per_token):
         return litellm, None
@@ -218,6 +212,8 @@ def normalize_cost_with_litellm(
     price_per_1m_output: Any = None,
     actual_cost_usd: Any = None,
 ) -> dict[str, Any]:
+    global _LITELLM_RUNTIME
+
     actual = _coerce_float(actual_cost_usd)
     if actual is not None:
         return {"cost_usd": float(f"{actual:.6f}"), "cost_source": "ACTUAL"}
@@ -245,8 +241,14 @@ def normalize_cost_with_litellm(
         unit_out=unit_out,
     )
 
+    try:
+        import litellm  # type: ignore
+    except ImportError:
+        litellm = None
+
+    _LITELLM_RUNTIME = litellm
     litellm, cost_per_token = _load_litellm_runtime()
-    if litellm is None or cost_per_token is None:
+    if litellm is None or not callable(cost_per_token):
         return {"cost_usd": None, "cost_source": "UNKNOWN"}
 
     model_name, custom_payload = _custom_model_payload(

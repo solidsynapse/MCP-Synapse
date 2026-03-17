@@ -1,0 +1,6 @@
+# Placeholder
+# Populate this file with final artifact hashes at v0.7.1 release cut.
+#
+# Example format:
+# <sha256>  MCP-Synapse-Setup-v0.7.1.exe
+# <sha256>  MCP-Synapse-v0.7.1-x64.msi
