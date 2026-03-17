@@ -1,12 +1,4 @@
-# Decisions Register
-
-<!-- Append-only. Never edit or remove existing rows.
-     To reverse a decision, add a new row that supersedes it.
-     Read this file at the start of any planning or research phase. -->
-
-## Carry-forward: verbatim active decisions from `docs/DECISIONS.md`
-
-### D-024 — Phase 3 scope + exit criteria + gates (UI thin shell)
+﻿## D-024 â€” Phase 3 scope + exit criteria + gates (UI thin shell)
 
 - Date: 2026-02-21
 - Decision: Phase 3 is a UI thin-shell phase. Core remains deterministic and provider-agnostic.
@@ -28,19 +20,19 @@
 - Evidence standard remains: docs/evidence/<ID_timestamp>/ with commands_ran.txt + anchor_proofs.txt (+ pytest artifacts when applicable).
 
 ### Exit criteria (Phase 3 DONE)
-- UI “thin shell boundary” is proven via evidence:
+- UI â€œthin shell boundaryâ€ is proven via evidence:
   - grep_proofs show provider client calls are absent from UI production path
   - dispatch chain points to headless/core execution surfaces
 - All Phase 3 tasks in TASKS/STATUS have evidence roots and are marked DONE with anchor proof (+ pytest when applicable).
 
-## D-029 — Phase 4 UI Prep Architecture Lock (Thin Shell)
+## D-029 â€” Phase 4 UI Prep Architecture Lock (Thin Shell)
 
 - Date: 2026-02-22
 - Decision: UI rewrite preparation is Phase 4 work (P4 UI PREP), not Phase 3.
 - Rationale: Phase 3 stabilizes core + provider contract layer + regression guardrails; UI work is surface/presentation refactor.
 
 ### P4 UI PREP Scope Freeze (Consolidated)
-- Cross-reference: D-024 “UI thin shell” rule applies. UI may only configure + dispatch + render.
+- Cross-reference: D-024 â€œUI thin shellâ€ rule applies. UI may only configure + dispatch + render.
 - Allowed UI responsibilities:
   - Collect user inputs and selections for request execution.
   - Dispatch execution to the headless/core surface via the single-entrypoint rule.
@@ -79,7 +71,7 @@
 1) UI remains a thin shell (inherits D-024 constraints):
    - UI may only configure + dispatch + render.
    - UI production path MUST NOT call provider clients directly.
-2) UI → core dispatch boundary:
+2) UI â†’ core dispatch boundary:
    - UI MUST call exactly one core/headless entrypoint for execution (e.g., ServerManager / headless API surface).
    - UI MUST NOT import or call ProviderClient/ProviderFactory/any provider client modules.
 3) Config I/O:
@@ -117,33 +109,33 @@ P4 UI PREP is ALLOWED when:
   - core/headless entrypoint anchor (file+line) at `ServerManager.execute_request_v1`.
 
 
-### Addendum — UI Implementation Stack Lock (Normative)
+### Addendum â€” UI Implementation Stack Lock (Normative)
 - **UI implementation stack is locked to:** **Tauri + Svelte (or SvelteKit) + shadcn/ui**.
 - **No stack changes** (framework/runtime/UI kit) are permitted **without an explicit SSOT decision update** under this same D-029 section.
 - This lock applies to the **UI production path** only and **does not alter** core/headless/provider-agnostic constraints.
 - UI must remain a **thin shell**: no provider client imports/calls, no network/protocol logic, no credential/config I/O, no streaming, no hidden retries/backoff.
 
-### Addendum — Navigation Layout (Normative)
+### Addendum â€” Navigation Layout (Normative)
 - Primary navigation is LEFT SIDEBAR ONLY (no right-side panel/drawer).
 - Sidebar supports collapsed icon-rail and expanded label mode.
 - Nested rollouts: at most one level deep.
 - Documentation (if added later) is a sidebar item that opens a full-page view with search.
 - Thin-shell rule remains: all actions dispatch via the single approved Tauri command boundary.
 
-### Addendum — Sidebar IA & Theme Defaults (Normative)
+### Addendum â€” Sidebar IA & Theme Defaults (Normative)
 - Theme: default DARK mode (light mode may be added later).
 - Sidebar IA (initial, top section): Bridges, Usage, Resilience, Automation/Policies.
 - Settings is bottom-pinned in the sidebar (separate bottom section).
 - No right-side panel/drawer; left sidebar is the only primary navigation.
 - Nested rollouts: at most one level deep.
 
-### Addendum — UI Hard-ban Scan Scope (Normative)
+### Addendum â€” UI Hard-ban Scan Scope (Normative)
 - Hard-ban provider token scans MUST be source-only.
 - Exclude build artifacts: node_modules/, target/, src-tauri/target/.
 - Exclude binary extensions (.lib, .rlib, .dll, .exe, .pdb, etc.).
 - Scan only source/text extensions (e.g., .svelte .ts .js .css .json .rs .toml .md).
 
-### Addendum — Navigation IA v2 (Normative)
+### Addendum â€” Navigation IA v2 (Normative)
 - This addendum supersedes prior UI IA addenda under D-029 where conflicts exist.
 - Default landing route: Dashboard.
 - Sidebar navigation (labels + routes):
@@ -155,18 +147,18 @@ P4 UI PREP is ALLOWED when:
   - Reliability is reserved (not implemented yet).
   - Settings is bottom-pinned: /settings
 - Top bar: left shows current page title; right has Help dropdown: Docs, Feedback, About (links or placeholders).
-- Footer: Solid Synapse © 2026 + last refresh timestamp (placeholder if not available).
+- Footer: Solid Synapse Â© 2026 + last refresh timestamp (placeholder if not available).
 - No right-side navigation panel/drawer. A right column inside a page grid is allowed (it is not a drawer).
 - Visual style guidance (non-functional): dark theme; glass/neumorphic accents; hover emphasis; high contrast; system font stack (SF Pro on macOS, Segoe UI on Windows, fallback sans-serif).
 - No new UI dependencies are introduced solely for charts/graphics; use placeholders or pure SVG only until SSOT explicitly allows otherwise.
 
-### Addendum — Dashboard Design Language Reference:
+### Addendum â€” Dashboard Design Language Reference:
 - The canonical UI primitive definitions are located in: ui-tauri/src/app.css under: "/* ===== UI Primitives (Dashboard Design Language) ===== */"
 - Usage and constraints are documented in docs/UI_STYLE_GUIDE.md.
 - New UI pages MUST reuse these primitives and tokens.
 - No alternative styling system is allowed.
 
-## D-033 — BYOK + Local-Only Boundary and Forbidden Use Lock
+## D-033 â€” BYOK + Local-Only Boundary and Forbidden Use Lock
 
 - Date: 2026-03-04
 - Decision:
@@ -181,30 +173,39 @@ P4 UI PREP is ALLOWED when:
   2) Reselling the app endpoint as a generic hosted proxy service for third parties.
   3) Misrepresenting the app as a compliance substitute for provider-side contractual/regulatory duties.
 
-## D-037 — Release Versioning Policy (Milestone-Based, pre-1.0)
+## D-037 - Release Versioning Policy (Milestone-Based)
 
-- Date: 2026-03-07
+- Date: 2026-03-17
 - Decision:
-  - Public release line remains pre-1.0 until domain-agnostic execution-fabric target is completed.
   - Current release lane is `v0.6.x (Early Access)`.
   - Milestone progression is normative:
-    1) `v0.7.x` -> RC-EXT closure + packaging/install/uninstall readiness
-    2) `v0.8.x` -> provider hardening + security/perf baseline + documentation pack
-    3) `v0.9.x` -> domain-agnostic migration-readiness (plugin/hook contracts + adapter standardization)
-    4) `v1.0.0` -> domain-agnostic execution-fabric completion with stable/performance-ready release criteria
+    1) `v0.7.x` -> release hardening (DONE)
+    2) `v0.8.x` -> capability depth + provider wave 1 (cost transparency, Bedrock proof, documentation pack, performance/security baseline)
+    3) `v0.9.x` -> provider wave 2 + release productization (Anthropic, Groq, GLM, Sigstore, auto-update)
+    4) `v1.0.x` -> pro developer surface (Chain Editor, advanced routing with new ADR, Vault expansion, Persona Studio)
+    5) `v1.1.x` -> REST adapter + IDE compatibility + Routing Advisor
+    6) `v1.2.x` -> Chain graph editor + post-v1.0 polish
+    7) `v1.3+` -> domain-agnostic migration + vertical adapters
+- Rationale:
+  - Provider waves and pro-surface features must land before the domain-agnostic migration.
+  - Starting migration after the provider/product surface is deeper creates a cleaner contract boundary and avoids building the same expansion set twice.
 - Constraints (normative):
   - Patch bump (`0.6.1` etc.) is hotfix/regression-only.
-  - Minor bump (`0.7.0`, `0.8.0`, `0.9.0`) requires closure evidence for the corresponding milestone package.
-  - UI/About must avoid implying full product completion before `v1.0.0` (use Early Access wording).
+  - Minor bump (`0.7.0`, `0.8.0`, `0.9.0`, `1.0.0`, `1.1.0`, `1.2.0`) requires closure evidence for the corresponding milestone package.
+  - Advanced routing is not authorized by this decision alone; it requires an explicit ADR before entering the shipped scope.
+  - UI/About must avoid implying domain-agnostic platform completion before the `v1.3+` migration lane is completed.
   - Product logo/app icon freeze is tied to packaging/versioning readiness closure (same release asset freeze point).
 
-## D-038 — Licensing & Distribution Policy (Visible-Source Freemium, Official Channel)
+## D-038 â€” Licensing & Distribution Policy (Visible-Source Freemium, Official Channel)
 
-- Date: 2026-03-08
+- Date: 2026-03-17
 - Decision:
   - Product licensing/distribution model is visible-source freemium with official-channel control.
   - First 3-5 months may run unsigned distribution mode, but release integrity controls are mandatory.
   - Core feature set remains strong free layer in the current lane; monetization is deferred to later Pro layer based on operational depth/collaboration/compliance features.
+- Rationale:
+  - The target audience is developer-first and can understand and trust Sigstore-backed artifact integrity.
+  - Commercial code signing is a distribution/marketing investment, not a current development milestone.
 - Constraints (normative):
   - Official distribution channel is single-source and controlled by product owner.
   - Every public release must include:
@@ -215,9 +216,12 @@ P4 UI PREP is ALLOWED when:
   - Security disclosure path must remain explicit (`security@` contact + disclosure policy).
   - Trademark policy is mandatory before broad public distribution:
     - forks/re-distributions must not present product name/logo as official.
-  - Code signing is planned for `0.9.x -> 1.0.0` phase; until then, integrity/traceability controls above are non-optional.
+  - `v0.9.x` uses Sigstore artifact integrity proof as the planned cryptographic trust layer; the SHA256 manifest remains mandatory and complementary.
+  - Commercial code signing (`~$300-400/year`) is deferred until post-revenue; it is required later for full SmartScreen trust but is outside the current budget lane.
+  - `UNSIGNED_NOTICE.md` remains active until commercial code signing is introduced.
+  - Integrity and traceability controls above remain non-optional while unsigned distribution mode is active.
 
-## D-039 — Public Repository Surface Policy
+## D-039 â€” Public Repository Surface Policy
 
 - Date: 2026-03-11
 - Decision:
@@ -227,7 +231,5 @@ P4 UI PREP is ALLOWED when:
 - Constraints:
   - This policy does not authorize deletion of SSOT documents or release-integrity artifacts.
   - Cleanup must remain deterministic, evidence-backed, and reversible.
+  - Historical RC references in docs/evidence/ and docs/release/releases/v0.6.0-rc.1/ are intentionally retained as release history. Public-facing surface v0.6.1 alignment is sufficient per D-039.
 
-## Local carry-forward notes (non-verbatim)
-
-- D-032 is not carried verbatim here by request, but its current-scope truth is active in `.gsd/REQUIREMENTS.md` and `.gsd/STATE.md`: M002 is the broader `v0.7.x` execution milestone; first-release provider scope keeps Bedrock blocked/de-scoped while the current release hygiene open set remains visible.

@@ -43,8 +43,8 @@ This release lane is temporarily unsigned. Windows SmartScreen may show warnings
 Before running a release artifact:
 
 1. Download from the official release channel.
-2. Verify hashes from [`docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt`](docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt).
-3. Review [`docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md).
+2. Verify hashes from [`docs/release/releases/v0.6.1/SHA256SUMS.txt`](docs/release/releases/v0.6.1/SHA256SUMS.txt).
+3. Review [`docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md).
 
 ## Scope
 

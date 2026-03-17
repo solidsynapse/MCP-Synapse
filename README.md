@@ -11,7 +11,7 @@ MCP Synapse is a provider-agnostic MCP control plane for managing connections, r
 
 This repository is in the `v0.6.x` Early Access release lane.
 
-- Current release package: [`docs/release/releases/v0.6.0-rc.1/`](docs/release/releases/v0.6.0-rc.1/)
+- Current release package: [`docs/release/releases/v0.6.1/`](docs/release/releases/v0.6.1/)
 - Binding project SSOT: [`docs/DECISIONS.md`](docs/DECISIONS.md), [`docs/STATUS.md`](docs/STATUS.md), [`docs/TASKS.md`](docs/TASKS.md)
 
 ## Source Visibility and Usage
@@ -22,10 +22,10 @@ Forks, modified builds, and redistributed versions must not use MCP Synapse bran
 
 ## Quick Start
 
-1. Use the official `v0.6.0-rc.1` release package and review [`INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.0-rc.1/INSTALL_RUN_NOTES.md).
-2. Verify installer hashes against [`SHA256SUMS.txt`](docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt).
+1. Use the official `v0.6.1` release package and review [`INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md).
+2. Verify installer hashes against [`SHA256SUMS.txt`](docs/release/releases/v0.6.1/SHA256SUMS.txt).
 3. Install and launch MCP Synapse.
-4. Review [`UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md) for current SmartScreen guidance.
+4. Review [`UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md) for current SmartScreen guidance.
 
 ## Why MCP Synapse Exists
 
@@ -54,20 +54,20 @@ Forks, modified builds, and redistributed versions must not use MCP Synapse bran
 - Credentials are user-owned and managed locally
 - Runtime behavior is designed to be explicit and deterministic
 - Security reporting and disclosure policy: [`SECURITY.md`](SECURITY.md)
-- Release trust note: [`docs/release/releases/v0.6.0-rc.1/TRUST_SECURITY.md`](docs/release/releases/v0.6.0-rc.1/TRUST_SECURITY.md)
+- Release trust note: [`docs/release/releases/v0.6.1/TRUST_SECURITY.md`](docs/release/releases/v0.6.1/TRUST_SECURITY.md)
 
 ## Install and Verify Release Integrity
 
-- Install/run notes: [`docs/release/releases/v0.6.0-rc.1/INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.0-rc.1/INSTALL_RUN_NOTES.md)
-- Release notes: [`docs/release/releases/v0.6.0-rc.1/RELEASE_NOTES.md`](docs/release/releases/v0.6.0-rc.1/RELEASE_NOTES.md)
-- What changed: [`docs/release/releases/v0.6.0-rc.1/WHAT_CHANGED.md`](docs/release/releases/v0.6.0-rc.1/WHAT_CHANGED.md)
-- SHA256 checksums: [`docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt`](docs/release/releases/v0.6.0-rc.1/SHA256SUMS.txt)
-- Unsigned notice: [`docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.0-rc.1/UNSIGNED_NOTICE.md)
+- Install/run notes: [`docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md)
+- Release notes: [`docs/release/releases/v0.6.1/RELEASE_NOTES.md`](docs/release/releases/v0.6.1/RELEASE_NOTES.md)
+- What changed: [`docs/release/releases/v0.6.1/WHAT_CHANGED.md`](docs/release/releases/v0.6.1/WHAT_CHANGED.md)
+- SHA256 checksums: [`docs/release/releases/v0.6.1/SHA256SUMS.txt`](docs/release/releases/v0.6.1/SHA256SUMS.txt)
+- Unsigned notice: [`docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md)
 
 PowerShell hash verification example:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\MCP Synapse_0.6.0-rc.1_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\MCP Synapse_0.6.1_x64-setup.exe
 ```
 
 Compare the output hash with `SHA256SUMS.txt`.
