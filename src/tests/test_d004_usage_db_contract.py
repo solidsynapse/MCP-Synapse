@@ -139,3 +139,34 @@ def test_d004_list_usage_stable_order_by_timestamp_then_request_id(tmp_path: Pat
         (ts1, "b", 10),
     ]
 
+
+def test_d004_usage_db_cost_source_column_is_nullable_and_roundtrips(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.db"
+    usage_db = UsageDatabase(db_path=db_path)
+
+    usage_db.log_usage(
+        agent_id="a1",
+        agent_name="A",
+        tokens_input=10,
+        tokens_output=5,
+        cost_usd=0.25,
+        cost_source="ESTIMATED",
+        request_id="req-1",
+        status="success",
+    )
+    usage_db.log_usage(
+        agent_id="a2",
+        agent_name="B",
+        tokens_input=0,
+        tokens_output=0,
+        cost_usd=0.0,
+        cost_source=None,
+        request_id="req-2",
+        status="success",
+    )
+
+    rows = usage_db.get_recent_usage(limit=10)
+    by_request_id = {str(row.get("request_id") or ""): row for row in rows}
+
+    assert by_request_id["req-1"]["cost_source"] == "ESTIMATED"
+    assert by_request_id["req-2"]["cost_source"] is None

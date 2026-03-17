@@ -233,3 +233,25 @@ P4 UI PREP is ALLOWED when:
   - Cleanup must remain deterministic, evidence-backed, and reversible.
   - Historical RC references in docs/evidence/ and docs/release/releases/v0.6.0-rc.1/ are intentionally retained as release history. Public-facing surface v0.6.1 alignment is sufficient per D-039.
 
+## D-040 - litellm integration for unified cost normalization
+
+- Date: 2026-03-17
+- Current state:
+  - Cost calculation is currently split across provider-specific functions such as `_estimate_cost()` and `_calc_cost()`.
+  - Each new provider currently requires another cost function, and pricing changes require updating multiple files.
+- Problem:
+  - The current cost model scales poorly as provider count grows.
+  - Pricing maintenance is duplicated and error-prone across provider implementations.
+- Decision:
+  - The project will integrate the litellm cost module as the unified cost-normalization layer.
+  - Existing provider-specific cost functions will become thin adapters that delegate to litellm where pricing data is available.
+- Fallback:
+  - If litellm has no pricing data for a provider or model, the system must return explicit `UNKNOWN`.
+  - Silent zero-cost success is forbidden.
+- Runtime dependency rule:
+  - Because litellm is a new runtime dependency, fallback behavior must be explicitly tested.
+  - A litellm-unavailable scenario must have graceful degradation behavior defined and implemented before rollout.
+- Boundary constraint:
+  - D-033 remains binding.
+  - litellm is authorized only for local cost normalization logic and must not introduce any cloud call or shared-service behavior.
+

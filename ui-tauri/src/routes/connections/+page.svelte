@@ -101,8 +101,12 @@
       notes?: string[];
       warnings?: string[];
       entries?: VaultEntry[];
-      secret?: string;
       path?: string;
+      id?: string;
+      type?: string;
+      mode?: string;
+      source_name?: string;
+      managed_path_present?: boolean;
     } | null;
   };
 
@@ -542,8 +546,10 @@
     }
   }
 
-  async function useVaultEntry(entryId: string) {
+  async function useVaultEntry(entry: VaultEntry) {
     if (vaultBusy || !vaultTargetFieldId) return;
+    const entryId = String(entry.id || "").trim();
+    const entryName = String(entry.name || "").trim() || "Selected vault entry";
     if (vaultTargetFieldId === "credentials_path") {
       updateWizardField(vaultTargetFieldId, `vault://${entryId}`);
       closeVaultPicker();
@@ -552,17 +558,16 @@
     vaultBusy = true;
     try {
       const result = await dispatchInvoke({ op: "vault.read", entry_id: entryId });
-      const secret = result.ok ? result.data?.secret : "";
-      if (result.ok && typeof secret === "string" && secret.trim()) {
-        if (vaultTargetFieldId === "credentials_path") {
-          const validationMessage = validateCredentialsPathValue(secret);
-          if (validationMessage) {
-            setVaultNotice("danger", validationMessage);
-            return;
-          }
-        }
-        updateWizardField(vaultTargetFieldId, secret);
-        closeVaultPicker();
+      if (result.ok) {
+        const entryType = String(result.data?.type || entry.type || "").trim();
+        const mode = String(result.data?.mode || "").trim();
+        const sourceName = String(result.data?.source_name || "").trim();
+        const details = [entryType, mode, sourceName].filter((value) => value.length > 0).join(" / ");
+        const suffix = details ? ` (${details})` : "";
+        setVaultNotice(
+          "info",
+          `${entryName}${suffix} is metadata-only. Raw secret autofill is disabled; enter the value manually.`,
+        );
         return;
       }
       setVaultNotice("danger", result.error?.message || "Vault read failed");
@@ -2359,7 +2364,7 @@
                               class="ui-focus h-8 rounded-md border px-2 text-[11px] font-medium transition-colors hover:bg-white/5"
                               style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
                               disabled={vaultBusy}
-                              onclick={() => useVaultEntry(entry.id)}
+                              onclick={() => useVaultEntry(entry)}
                             >
                               Use
                             </button>

@@ -640,3 +640,4 @@ Result: BLOCKED (BYOK key not provided; network calls disallowed by gate)
   - packaged startup/menu transition behavior under default profile,
   - worker decision logs confirm stable takeover on whitelist ops,
   - memory recheck against deferred optimization target (`<250 MB` remains future target unless proven now).
+> ARCHIVE: Historical status log retained for release history. `.gsd/` is the active working SSOT. Do not use this file for current planning or execution truth.

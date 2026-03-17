@@ -6,51 +6,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from src.providers.cost_normalizer import normalize_cost_with_litellm
+
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _HTTP_TIMEOUT_SECONDS = 30
-
-
-def _parse_positive_float(value: Any) -> float | None:
-    try:
-        parsed = float(value)
-    except Exception:
-        return None
-    if parsed <= 0:
-        return None
-    return parsed
-
-
-def _openai_unit_prices(agent: dict[str, Any], model_id: str) -> tuple[float | None, float | None]:
-    override_in = _parse_positive_float(agent.get("openai_price_per_1m_input"))
-    override_out = _parse_positive_float(agent.get("openai_price_per_1m_output"))
-    if override_in is None:
-        override_in = _parse_positive_float(agent.get("price_per_1m_input"))
-    if override_out is None:
-        override_out = _parse_positive_float(agent.get("price_per_1m_output"))
-    if override_in is not None and override_out is not None:
-        return override_in, override_out
-    model = str(model_id or "").strip().lower()
-    if model.startswith("gpt-4o-mini"):
-        return (0.15, 0.60)
-    if model.startswith("gpt-4.1-mini"):
-        return (0.40, 1.60)
-    if model.startswith("gpt-4.1-nano"):
-        return (0.10, 0.40)
-    if model.startswith("gpt-4o"):
-        return (2.50, 10.00)
-    return (0.15, 0.60)
-
-
-def _estimate_cost(tokens_in: int | None, tokens_out: int | None, unit_in: float | None, unit_out: float | None) -> float | None:
-    if unit_in is None or unit_out is None:
-        return None
-    if tokens_in is None or tokens_out is None:
-        return None
-    total = int(tokens_in) + int(tokens_out)
-    if total <= 0:
-        return 0.0
-    return (float(tokens_in) / 1_000_000.0) * unit_in + (float(tokens_out) / 1_000_000.0) * unit_out
 
 
 class OpenAIError(RuntimeError):
@@ -150,14 +110,19 @@ class OpenAIProviderClient:
         except Exception:
             tokens_out = None
 
-        unit_in, unit_out = _openai_unit_prices(self._agent, self.model_id)
-        cost_usd = _estimate_cost(tokens_in, tokens_out, unit_in, unit_out)
+        cost_result = normalize_cost_with_litellm(
+            provider_id=self.provider_id,
+            model_id=self.model_id,
+            tokens_input=tokens_in,
+            tokens_output=tokens_out,
+            agent=self._agent,
+        )
 
         return {
             "text": text,
             "tokens_input": tokens_in,
             "tokens_output": tokens_out,
-            "cost_usd": cost_usd,
+            **cost_result,
         }
 
     def _read_api_key(self, api_key_path: str) -> str:

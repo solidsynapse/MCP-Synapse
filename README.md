@@ -12,7 +12,10 @@ MCP Synapse is a provider-agnostic MCP control plane for managing connections, r
 This repository is in the `v0.6.x` Early Access release lane.
 
 - Current release package: [`docs/release/releases/v0.6.1/`](docs/release/releases/v0.6.1/)
-- Binding project SSOT: [`docs/DECISIONS.md`](docs/DECISIONS.md), [`docs/STATUS.md`](docs/STATUS.md), [`docs/TASKS.md`](docs/TASKS.md)
+- Active working SSOT: [`.gsd/`](.gsd/)
+- Historical archive: [`docs/`](docs/)
+
+`.gsd/` is the active working SSOT. `docs/` remains the historical archive and public release/documentation surface.
 
 ## Source Visibility and Usage
 

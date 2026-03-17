@@ -1,4 +1,10 @@
-# MCP Synapse User Guide
+---
+title: User Guide
+description: Step-by-step getting started guide for the current MCP Synapse v0.6.1 Windows release.
+sidebar:
+  label: User Guide
+  order: 3
+---
 
 This guide describes the current MCP Synapse desktop product surface for the `v0.6.1` Windows release. It is written for developers who want a step-by-step path from install to first working connection without relying on hidden defaults or hosted relay infrastructure.
 
@@ -46,8 +52,8 @@ If SmartScreen appears:
 
 This is normal for the current lane and is explicitly documented in:
 
-- `docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md`
-- `docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md`
+- [`INSTALL_RUN_NOTES.md`](https://github.com/solidsynapse/MCP-Synapse/blob/main/docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md)
+- [`UNSIGNED_NOTICE.md`](https://github.com/solidsynapse/MCP-Synapse/blob/main/docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md)
 
 ### SHA256 verification
 
@@ -71,6 +77,8 @@ Compare the hash output with the matching entry in `SHA256SUMS.txt`.
 2. Verify the package hash before running it.
 3. Keep the default install location unless your environment requires a custom path.
 4. Finish setup and launch MCP Synapse from the Start Menu shortcut.
+
+For the detailed packaged-runtime notes, see [`INSTALL_RUN_NOTES.md`](https://github.com/solidsynapse/MCP-Synapse/blob/main/docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md).
 
 ## 3. First Connection
 
@@ -183,6 +191,6 @@ If the bridge starts but provider requests fail:
 
 Before you treat a behavior as a new bug, review the current release-known issues:
 
-- `docs/release/releases/v0.6.1/KNOWN_ISSUES.md`
+- [`KNOWN_ISSUES.md`](https://github.com/solidsynapse/MCP-Synapse/blob/main/docs/release/releases/v0.6.1/KNOWN_ISSUES.md)
 
 Current known deferred items include Bedrock remaining blocked from the first-release surface, steady-state worker memory optimization being deferred, and commercial code signing remaining outside the current lane.

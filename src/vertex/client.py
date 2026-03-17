@@ -9,6 +9,7 @@ from time import monotonic
 from typing import Any
 
 from src.config.manager import ConfigManager
+from src.providers.cost_normalizer import normalize_cost_with_litellm
 
 logger = logging.getLogger(__name__)
 
@@ -157,10 +158,6 @@ class VertexAIClient:
         message = str(payload.get("message") or "").strip()
         return f"{prefix}: {cause}; raw={message}"
 
-    def _calc_cost(self, tokens_in: int, tokens_out: int) -> float:
-        cost = (tokens_in / 1_000_000.0) * self.price_in + (tokens_out / 1_000_000.0) * self.price_out
-        return float(f"{cost:.6f}")
-
     def generate_content(
         self,
         prompt: str,
@@ -223,12 +220,19 @@ class VertexAIClient:
             except Exception:
                 text = ""
 
-        cost = self._calc_cost(input_tokens, output_tokens)
+        cost_result = normalize_cost_with_litellm(
+            provider_id="vertex",
+            model_id=self.model_id,
+            tokens_input=input_tokens,
+            tokens_output=output_tokens,
+            price_per_1m_input=self.price_in,
+            price_per_1m_output=self.price_out,
+        )
         return {
             "text": text or "",
             "tokens_input": input_tokens,
             "tokens_output": output_tokens,
-            "cost_usd": cost,
+            **cost_result,
         }
 
     def test_connection(self) -> bool:

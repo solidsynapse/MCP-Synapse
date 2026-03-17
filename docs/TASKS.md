@@ -1656,3 +1656,4 @@ explicit banner preserved; ui check PASS).
     - [ ] Worker decision logs show stable `worker_success` dominance on whitelist ops.
     - [ ] Menu transition latency reconfirmed under packaged default profile.
     - [ ] Memory recheck recorded; if still above target, keep `<250 MB` as deferred follow-up slice.
+> ARCHIVE: Historical task log retained for release history. `.gsd/` is the active working SSOT. Do not use this file for current planning or execution truth.

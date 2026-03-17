@@ -1,0 +1,30 @@
+# State
+
+- M001/S01 research: COMPLETE
+- M001/S01 planning: SKIPPED (GSD auto-mode unavailable on Windows)
+- M001 SSOT migration: COMPLETE (PROJECT.md, DECISIONS.md, REQUIREMENTS.md written by Codex)
+- M002/S01 runtime hotfix verification: COMPLETE (PASS; evidence: docs\evidence\S01_20260317-005332)
+- M002/S02 RC-EXT hygiene pack: COMPLETE (PASS; evidence: docs\evidence\S02_20260317-010639, docs\evidence\S02_20260317-010719, docs\evidence\S02_20260317-011057, docs\evidence\S02_20260317-011224)
+- M002/S03 packaging and install/uninstall readiness: COMPLETE (PASS; evidence: docs\evidence\S03_20260317-011725, docs\evidence\S03_20260317-011757, docs\evidence\S03_20260317-011837)
+- M002/S04 repo and release surface sync: NARROW-ACCEPTED (public surface clean for v0.6.1; historical archive intentionally retains v0.6.0-rc.1 release history; evidence: docs\evidence\S04_20260317-013444, docs\evidence\S04_20260317-013445, docs\evidence\S04_20260317-013446, docs\evidence\S04_20260317-013447)
+- Note: S02 shortcuts static check required elevated npm run - pattern to watch in future sandboxed runs.
+- M002: COMPLETE
+- M003/S01 litellm ADR gate: COMPLETE (D-040 recorded)
+- M003/S01 implementation plan: COMPLETE (`.gsd/milestones/M003/S01-PLAN.md` written)
+- M003/S01 backend cost normalization: COMPLETE (PASS; evidence: docs\evidence\M003_S01_20260317-072221)
+- M003/S01 cost_source persistence + Usage History badge: COMPLETE (PASS; evidence: docs\evidence\M003_S01_20260317-072221)
+- M003/S02 Bedrock: BLOCKED-DEFERRED (model support mismatch + quota gap)
+- M003/S03 kickoff: COMPLETE (memory recheck commands prepared; security baseline reviewed; evidence: docs\evidence\M003_S03_20260317-083305)
+- M003/S03 memory recheck: COMPLETE (PASS for <250 MB lane target; <150 MB target deferred to post-migration optimization; evidence: docs\evidence\M003_S03_20260317-083305\memory_results.txt)
+- M003/S03 security remediation: COMPLETE (PASS; evidence: docs\evidence\M003_S03_20260317-083305\security_remediation.txt)
+- M003/S03 vault UI follow-up: COMPLETE (PASS; evidence: docs\evidence\M003_S03_20260317-083305\vault_ui_followup.txt)
+- M003/S03: COMPLETE
+- M003/S04 documentation pack step 1: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736)
+- M003/S04 feature reference: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736\feature_reference_summary.txt)
+- M003/S04 user guide: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736\user_guide_summary.txt)
+- M003/S04 legal/compliance minimum pack: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736\legal_pack_summary.txt)
+- M003/S04 D-039 public surface cleanup: COMPLETE (PASS; evidence: docs\evidence\M003_S04_20260317-195736\cleanup_summary.txt)
+- M003/S04: COMPLETE
+- Current milestone: M003
+- Active slice: S05
+- Next action: Begin M003/S05 - MCP capability types + IDE compatibility matrix

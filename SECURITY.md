@@ -6,7 +6,7 @@ Security review and disclosure handling currently apply to the active Early Acce
 
 - `v0.6.x`
 
-Versioning policy and release lane constraints are tracked in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+The active working SSOT lives under [`.gsd/`](.gsd/). [`docs/`](docs/) remains the historical archive and release/documentation surface.
 
 ## Reporting a Vulnerability
 

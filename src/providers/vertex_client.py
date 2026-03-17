@@ -83,6 +83,6 @@ class VertexProviderClient:
             total = int(tokens_in or 0) + int(tokens_out or 0)
         except Exception:
             total = 0
-        if total > 0 and not self._pricing_available:
+        if total > 0 and not self._pricing_available and result.get("cost_source") == "UNKNOWN":
             result["cost_usd"] = None
         return result

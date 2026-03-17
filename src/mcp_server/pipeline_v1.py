@@ -187,12 +187,14 @@ class ObserverV1:
             request_id = result.get("request_id")
             provider = result.get("provider")
             model_id = result.get("model_id")
+            cost_source = result.get("cost_source")
             usage_db.log_usage(
                 agent_id=context.agent["id"],
                 agent_name=context.agent["name"],
                 tokens_input=tokens_in,
                 tokens_output=tokens_out,
                 cost_usd=cost,
+                cost_source=str(cost_source) if cost_source is not None else None,
                 latency_ms=int(latency_ms) if latency_ms is not None else None,
                 status=str(status) if status is not None else None,
                 error_type=str(error_type) if error_type is not None else None,

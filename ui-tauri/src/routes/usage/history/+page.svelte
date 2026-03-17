@@ -16,6 +16,7 @@
     tokens_input: number | null;
     tokens_output: number | null;
     cost_usd: number | null;
+    cost_source: string | null;
   };
 
   const limit = 200;
@@ -127,12 +128,25 @@
     return row.tokens_input + row.tokens_output;
   }
 
+  function normalizedCostSource(row: UsageRow): "ACTUAL" | "ESTIMATED" | "UNKNOWN" {
+    const raw = String(row.cost_source || "").trim().toUpperCase();
+    if (raw === "ACTUAL") return "ACTUAL";
+    if (raw === "ESTIMATED") return "ESTIMATED";
+    return "UNKNOWN";
+  }
+
   function pricingStatus(row: UsageRow): string {
-    const total = totalTokens(row);
-    if (total == null) return "N/A";
-    if (total <= 0) return "No usage";
-    if (typeof row.cost_usd === "number" && !Number.isNaN(row.cost_usd) && row.cost_usd > 0) return "Estimated";
-    return "Missing pricing data";
+    const source = normalizedCostSource(row);
+    if (source === "ACTUAL") return "Actual";
+    if (source === "ESTIMATED") return "Estimated";
+    return "Unknown";
+  }
+
+  function pricingDotStyle(row: UsageRow): string {
+    const source = normalizedCostSource(row);
+    if (source === "ACTUAL") return "background-color: #34d399;";
+    if (source === "ESTIMATED") return "background-color: #fbbf24;";
+    return "background-color: #94a3b8;";
   }
 
   function tokenRangeLabel(range: TokenRangeId): string {
@@ -208,7 +222,7 @@
     displayRows().some((row) => {
       const total = totalTokens(row);
       if (total == null || total <= 0) return false;
-      return !(typeof row.cost_usd === "number" && !Number.isNaN(row.cost_usd) && row.cost_usd > 0);
+      return normalizedCostSource(row) === "UNKNOWN";
     })
   );
 
@@ -369,6 +383,7 @@
           tokens_input: typeof row?.tokens_input === "number" ? row.tokens_input : null,
           tokens_output: typeof row?.tokens_output === "number" ? row.tokens_output : null,
           cost_usd: typeof row?.cost_usd === "number" ? row.cost_usd : null,
+          cost_source: typeof row?.cost_source === "string" ? row.cost_source : null,
         }));
       });
       rows = nextRows;
@@ -676,7 +691,19 @@
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.latency_ms ?? "N/A"}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.tokens_input ?? "N/A"}</td>
               <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{row.tokens_output ?? "N/A"}</td>
-              <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">{formatMoneyPrecise(row.cost_usd)}</td>
+              <td class="px-4 py-3 whitespace-nowrap" style="color: var(--text-muted);">
+                <div class="flex items-center gap-2">
+                  <span>{formatMoneyPrecise(row.cost_usd)}</span>
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+                    style="border-color: var(--border-subtle); background-color: rgba(255, 255, 255, 0.03); color: var(--text-primary);"
+                    title={`Pricing source: ${pricingStatus(row)}`}
+                  >
+                    <span class="inline-block h-2 w-2 rounded-full" style={pricingDotStyle(row)}></span>
+                    <span>{pricingStatus(row)}</span>
+                  </span>
+                </div>
+              </td>
             </tr>
           {/each}
         {/if}

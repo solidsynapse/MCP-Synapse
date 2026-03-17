@@ -114,6 +114,13 @@ class ServerManager:
         text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
         text = re.sub(r"(?i)bearer\s+[a-z0-9._\-+/=]+", "Bearer [REDACTED]", text)
         text = re.sub(r"(?i)(api[_\- ]?key|token|secret|authorization)\s*[:=]\s*[^;\s]+", r"\1=[REDACTED]", text)
+        path_patterns = [
+            r'(^|[\s\'"=(\[])([a-zA-Z]:\\(?:[^\\\r\n]+))',
+            r'(^|[\s\'"=(\[])(\\\\[^\s\'":;<>()\[\]]+)',
+            r'(^|[\s\'"=(\[])(/(?:[^/\s]+/)+[^/\s\'":;<>()\[\]]+)',
+        ]
+        for pattern in path_patterns:
+            text = re.sub(pattern, lambda m: f"{m.group(1)}[REDACTED_PATH]", text)
         if len(text) > 700:
             text = text[:700]
         return text
@@ -419,8 +426,8 @@ class ServerManager:
     def vault_read(self, params: dict) -> dict[str, object]:
         entry_id = str(params.get("entry_id") or "").strip()
         try:
-            secret = self._vault.read_secret(entry_id)
-            return {"ok": True, "errors": [], "warnings": [], "data": {"secret": secret}}
+            metadata = self._vault.get_entry_metadata(entry_id)
+            return {"ok": True, "errors": [], "warnings": [], "data": metadata}
         except ValueError as exc:
             return {"ok": False, "errors": [str(exc)], "warnings": [], "data": {}}
         except Exception:
@@ -3007,6 +3014,7 @@ class ServerManager:
             tokens_in = int(result.get("tokens_input", 0) or 0)
             tokens_out = int(result.get("tokens_output", 0) or 0)
             cost = float(result.get("cost_usd", 0.0) or 0.0)
+            cost_source = result.get("cost_source")
             try:
                 self._usage_db.log_usage(
                     agent_id=agent_id,
@@ -3014,6 +3022,7 @@ class ServerManager:
                     tokens_input=tokens_in,
                     tokens_output=tokens_out,
                     cost_usd=cost,
+                    cost_source=str(cost_source) if cost_source is not None else None,
                     status="success",
                 )
             except Exception as db_exc:

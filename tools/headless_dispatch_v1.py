@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+import traceback
 import sys
 from pathlib import Path
 
@@ -92,6 +93,55 @@ def _write_backend_ingress_log(agent_id: str, prompt: str) -> None:
         )
     except Exception:
         pass
+
+
+def _sanitize_error_detail(value: object) -> str:
+    try:
+        repo_root = _repo_root_from_tools_dir()
+        if repo_root not in sys.path:
+            sys.path.append(repo_root)
+        from src.mcp_server.manager import ServerManager
+
+        sanitized = ServerManager._sanitize_error_raw(value)
+        if sanitized:
+            return sanitized
+    except Exception:
+        pass
+    return "request failed"
+
+
+def _write_local_debug_error(event: str, exc: object, **context: object) -> None:
+    if not _internal_debug_observability_enabled():
+        return
+    try:
+        root = Path(_repo_root_from_tools_dir())
+        log_file = root.joinpath("data", "observability", "backend_dispatch_errors.jsonl")
+        row = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": str(event or "").strip() or "dispatch_error",
+            "detail": _sanitize_error_detail(exc),
+            "error_type": exc.__class__.__name__ if isinstance(exc, BaseException) else type(exc).__name__,
+        }
+        for key, value in context.items():
+            if value is None:
+                continue
+            row[str(key)] = _sanitize_error_detail(value)
+        if isinstance(exc, BaseException):
+            trace_text = "".join(traceback.format_exception_only(type(exc), exc)).strip()
+            if trace_text:
+                row["trace"] = _sanitize_error_detail(trace_text)
+        _append_jsonl(log_file, row)
+    except Exception:
+        pass
+
+
+def _public_error_message(code: str) -> str:
+    code_key = str(code or "").strip().lower()
+    if code_key == "dispatch_invalid_json":
+        return "Invalid JSON request."
+    if code_key == "prompt_file_read_failed":
+        return "Prompt file could not be read."
+    return "Dispatch failed."
 
 
 def _connections_response(result: dict) -> dict:
@@ -526,6 +576,7 @@ def _dispatch_op(payload: dict) -> dict:
                     "tokens_input": r.get("tokens_input"),
                     "tokens_output": r.get("tokens_output"),
                     "cost_usd": r.get("cost_usd"),
+                    "cost_source": r.get("cost_source"),
                 }
             )
         return _ok(
@@ -655,13 +706,14 @@ def _dispatch(agent_id: str, prompt: str) -> dict:
     try:
         payload = _maybe_parse_json_prompt(prompt)
     except ValueError as exc:
+        _write_local_debug_error("dispatch_invalid_json", exc, agent_id=agent_id)
         return {
             "ok": False,
             "status": "error",
             "text": None,
             "error": {
                 "code": "dispatch_invalid_json",
-                "message": str(exc),
+                "message": _public_error_message("dispatch_invalid_json"),
             },
         }
     dry_run = False
@@ -705,7 +757,8 @@ def main() -> int:
         try:
             prompt_text = Path(args.prompt_file).read_text(encoding="utf-8-sig").rstrip("\r\n")
         except Exception as exc:
-            payload = _fail("prompt_file_read_failed", str(exc))
+            _write_local_debug_error("prompt_file_read_failed", exc, prompt_file=args.prompt_file)
+            payload = _fail("prompt_file_read_failed", _public_error_message("prompt_file_read_failed"))
             _write_payload(payload)
             return 2
     else:
@@ -716,13 +769,14 @@ def main() -> int:
     try:
         payload = _dispatch(agent_id=args.agent_id, prompt=prompt_text)
     except Exception as exc:
+        _write_local_debug_error("dispatch_unhandled_exception", exc, agent_id=args.agent_id)
         payload = {
             "ok": False,
             "status": "error",
             "text": None,
             "error": {
                 "code": getattr(exc, "error_type", exc.__class__.__name__),
-                "message": str(exc),
+                "message": _public_error_message("dispatch_unhandled_exception"),
             },
         }
 

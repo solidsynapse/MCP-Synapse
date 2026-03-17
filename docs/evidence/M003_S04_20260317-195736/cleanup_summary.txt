@@ -1,0 +1,23 @@
+M003/S04 D-039 public repository cleanup summary
+
+Deleted stale files and their replacements:
+- docs/ARCHITECTURE_LOG.md -> no public replacement; current architecture truth lives in .gsd/DECISIONS.md and docs/PRODUCT_ROADMAP.md
+- docs/ARCHITECTURE_EVOLUTION_LOG.md -> no public replacement; internal process history removed from the primary public surface per D-039
+- docs/azure_mcp_synapse_user_guide.md -> replaced by docs/guides/azure-openai.md
+- docs/Vertex_AI_User_Guide.md -> replaced by docs/guides/vertex.md
+- docs/user_guide_huggingface_mcp_synapse_ide.md -> replaced by docs/guides/hugging-face.md
+- docs/release/RELEASE_EXECUTION_CHECKLIST.md -> no public replacement; current public release truth lives under docs/release/releases/v0.6.1/
+
+Archived in place:
+- docs/TASKS.md
+- docs/STATUS.md
+
+Archive note:
+- Both historical files now state that .gsd/ is the active working SSOT and that the archive files must not be used for current planning or execution truth.
+
+Policy anchor:
+- Cleanup executed under D-039 public repository surface policy.
+
+Verification:
+- Files removed with git rm as requested.
+- Archive-note files staged with git add as requested.
