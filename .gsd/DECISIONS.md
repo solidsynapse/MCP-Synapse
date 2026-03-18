@@ -221,6 +221,11 @@ P4 UI PREP is ALLOWED when:
   - Commercial code signing (`~$300-400/year`) is deferred until post-revenue; it is required later for full SmartScreen trust but is outside the current budget lane.
   - `UNSIGNED_NOTICE.md` remains active until commercial code signing is introduced.
   - Integrity and traceability controls above remain non-optional while unsigned distribution mode is active.
+- Implementation path:
+  - GitHub Actions + Sigstore/Cosign keyless signing via OIDC token.
+  - No private key storage required.
+  - Lowest maintenance overhead.
+  - To be implemented post-revenue alongside CI/CD pipeline setup.
 
 ## D-039 â€” Public Repository Surface Policy
 
@@ -259,6 +264,7 @@ P4 UI PREP is ALLOWED when:
 ## D-041 - REST adapter as a strategic expansion milestone
 
 - Date: 2026-03-18
+- Delivery status: DELIVERED in `M004/S05`
 - Decision:
   - The REST adapter is a strategic expansion milestone, not a minor feature.
   - It belongs in the `v0.9.x / M004` lane as part of the first visible domain-agnostic expansion signal.
@@ -273,6 +279,7 @@ P4 UI PREP is ALLOWED when:
 ## D-042 - D-031 budget package flip to explicit enforcement availability
 
 - Date: 2026-03-18
+- Delivery status: DELIVERED in `M004/S03`
 - Decision:
   - The resilience budget package is no longer monitor-only.
   - Explicit user-configured enforcement modes are now authorized: `monitor`, `block`, and `throttle`.

@@ -8,6 +8,9 @@ from typing import Any
 
 _DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 _HTTP_TIMEOUT_SECONDS = 5
+_GENERIC_HTTP_MESSAGE = "Request failed"
+_GENERIC_UNREACHABLE_MESSAGE = "Service unreachable"
+_GENERIC_INVALID_JSON_MESSAGE = "Invalid JSON response"
 
 
 class OllamaProviderError(RuntimeError):
@@ -47,20 +50,18 @@ class OllamaProviderClient:
         except urllib.error.HTTPError as http_exc:
             status_code = int(getattr(http_exc, "code", 0) or 0)
             try:
-                raw_err = http_exc.read()
+                http_exc.read()
             except Exception:
-                raw_err = b""
-            snippet = self._decode_snippet(raw_err)
-            raise OllamaProviderError(f"Ollama HTTP {status_code}: {snippet}") from http_exc
+                pass
+            raise OllamaProviderError(f"Ollama HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
         except Exception as exc:
-            raise OllamaProviderError(f"Ollama unreachable at {self._base}: {exc}") from exc
+            raise OllamaProviderError(_GENERIC_UNREACHABLE_MESSAGE) from exc
 
         decoded = raw.decode("utf-8", errors="replace")
         try:
             parsed: Any = json.loads(decoded)
         except Exception as exc:
-            snippet = self._decode_snippet(raw)
-            raise OllamaProviderError(f"Invalid JSON response: {exc}; body={snippet}") from exc
+            raise OllamaProviderError(_GENERIC_INVALID_JSON_MESSAGE) from exc
 
         text = self._extract_text(parsed)
         usage = parsed.get("usage") if isinstance(parsed, dict) else None
@@ -85,9 +86,3 @@ class OllamaProviderClient:
                     if "text" in first:
                         return str(first.get("text") or "")
         raise OllamaProviderError("Malformed Ollama response")
-
-    def _decode_snippet(self, raw: bytes, *, limit: int = 500) -> str:
-        text = raw.decode("utf-8", errors="replace").strip()
-        if len(text) > limit:
-            return text[:limit]
-        return text

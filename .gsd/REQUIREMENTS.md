@@ -6,11 +6,11 @@ This file tracks the active working requirement set for `.gsd/`.
 
 | Status | Count |
 |---|---:|
-| Delivered | 2 |
+| Delivered | 7 |
 | Active | 15 |
 | Deferred | 3 |
 | Out of scope | 3 |
-| Total tracked | 23 |
+| Total tracked | 28 |
 
 ## Delivered
 
@@ -18,6 +18,11 @@ This file tracks the active working requirement set for `.gsd/`.
 |---|---|---|---|---|
 | R014 | Post-RC performance smoke | quality-attribute | M003/S03 | Delivered through the M003 performance baseline closure, including memory recheck and documented lane-target acceptance. |
 | R015 | Full English documentation pack | launchability | M003/S04 | Delivered through install/download, release-notes, feature reference, root user guide, web user guide, and legal/compliance minimum pack closure. |
+| R024 | Provider Wave 2 adapters are available in the product surface | core-capability | M004/S01 | Delivered through Anthropic, Groq, Gemini, OpenRouter, DeepSeek, and xAI/Grok adapter registration, runtime contract coverage, and factory exposure. |
+| R025 | Bedrock Early Access UI exposure is explicit and non-misleading | launchability | M004/S02 | Delivered through Bedrock provider-picker exposure with an explicit Early Access badge and runtime-test warning copy. |
+| R026 | Budget Guard supports explicit enforcement modes | compliance/security | M004/S03 | Delivered through deterministic `monitor`, `block`, and `throttle` modes with visible user control and enforcement telemetry. |
+| R027 | Update checks and release integrity guidance are user-controlled | launchability | M004/S04 | Delivered through the Settings update-check flow, GitHub release linking, and SHA256/Sigstore guidance aligned to D-038. |
+| R028 | REST adapter snapshot is available inside Connections | core-capability | M004/S05 | Delivered through the `rest_api` adapter, local auth/mapping controls, and the Connections `REST Sources` surface. |
 
 ## Active
 

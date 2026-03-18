@@ -14,6 +14,13 @@ _DEFAULT_BASE_URL = "https://api.anthropic.com/v1"
 _DEFAULT_API_VERSION = "2023-06-01"
 _DEFAULT_MAX_TOKENS = 1024
 _HTTP_TIMEOUT_SECONDS = 30
+_GENERIC_HTTP_MESSAGE = "Request failed"
+_GENERIC_UNREACHABLE_MESSAGE = "Service unreachable"
+_GENERIC_INVALID_JSON_MESSAGE = "Invalid JSON response"
+_GENERIC_MALFORMED_RESPONSE_MESSAGE = "Malformed response"
+_GENERIC_MISSING_TEXT_MESSAGE = "Malformed response: missing text content"
+_GENERIC_MISSING_API_KEY_FILE = "API key file does not exist"
+_GENERIC_EMPTY_API_KEY_FILE = "API key file is empty"
 
 
 class AnthropicError(RuntimeError):
@@ -82,21 +89,15 @@ class AnthropicProviderClient:
             with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as http_exc:
-            body = ""
-            try:
-                body = http_exc.read().decode("utf-8", errors="replace")
-            except Exception:
-                pass
             status_code = int(getattr(http_exc, "code", 0) or 0)
-            msg = body.strip() or str(http_exc)
-            raise AnthropicHTTPError(status_code, f"HTTP {status_code}: {msg}") from http_exc
+            raise AnthropicHTTPError(status_code, f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
         except Exception as exc:
-            raise AnthropicError(f"Anthropic unreachable at {self._base}: {exc}") from exc
+            raise AnthropicError(_GENERIC_UNREACHABLE_MESSAGE) from exc
 
         try:
             parsed = json.loads(raw.decode("utf-8"))
         except Exception as exc:
-            raise AnthropicResponseError(f"Invalid JSON response: {exc}") from exc
+            raise AnthropicResponseError(_GENERIC_INVALID_JSON_MESSAGE) from exc
 
         text = self._extract_text(parsed)
         usage = parsed.get("usage") or {}
@@ -132,15 +133,15 @@ class AnthropicProviderClient:
                     parts.append(value)
             if parts:
                 return "".join(parts)
-        raise AnthropicResponseError("Malformed response: missing text content")
+        raise AnthropicResponseError(_GENERIC_MISSING_TEXT_MESSAGE)
 
     def _read_api_key(self, api_key_path: str) -> str:
         path = Path(str(api_key_path)).expanduser()
         if not path.exists():
-            raise ValueError(f"API key file does not exist: {path}")
+            raise ValueError(_GENERIC_MISSING_API_KEY_FILE)
         key = path.read_text(encoding="utf-8").strip()
         if not key:
-            raise ValueError(f"API key file is empty: {path}")
+            raise ValueError(_GENERIC_EMPTY_API_KEY_FILE)
         return key
 
     def _resolve_max_tokens(self, raw: Any) -> int:

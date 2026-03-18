@@ -1,9 +1,11 @@
 # M004 Roadmap
 
 Milestone: `v0.9.x`
-Status: Planned
+Status: COMPLETE
 
 ## S01 - Provider Wave 2
+
+- Status: COMPLETE
 
 - Risk: HIGH
 - Depends: none
@@ -29,6 +31,8 @@ Status: Planned
 
 ## S02 - Bedrock Early Access UI badge
 
+- Status: COMPLETE
+
 - Risk: LOW
 - Depends: S01
 - Scope:
@@ -45,6 +49,8 @@ Status: Planned
   - R018 remains consistent unless external blockers are truly resolved.
 
 ## S03 - Budget Enforcement Toggle (D-031)
+
+- Status: COMPLETE
 
 - Risk: MEDIUM
 - Depends: S01
@@ -63,6 +69,8 @@ Status: Planned
 
 ## S04 - Auto-update + Sigstore (D-038)
 
+- Status: COMPLETE
+
 - Risk: MEDIUM
 - Depends: S03
 - Scope:
@@ -80,6 +88,8 @@ Status: Planned
   - update UX remains explicit and user-controlled.
 
 ## S05 - REST Adapter
+
+- Status: COMPLETE
 
 - Risk: MEDIUM
 - Depends: S01

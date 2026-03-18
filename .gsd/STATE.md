@@ -57,7 +57,9 @@
 - Post-M004 backend update-check dispatch migration: COMPLETE (PASS; 2026-03-18; Settings no longer calls the GitHub API directly from the frontend and now uses the new `system.check_update` headless dispatch op instead, which avoids the Tauri HTTP capability gap)
 - Post-M004 update-check endpoint follow-up: COMPLETE (PASS; 2026-03-18; `system.check_update` now uses the GitHub releases list endpoint with `?per_page=1` and reads the newest entry from the returned array so pre-releases are visible)
 - Post-M004 About copy refresh + audit report: COMPLETE (PASS; 2026-03-18; Settings About messaging now reflects the local-first MCP gateway positioning, and an M004 provider/security/perf audit was completed as a report-only pass with no code remediation in this step)
+- M004 closure revalidation: COMPLETE (PASS; 2026-03-18; S01-S05 are aligned across STATE, REQUIREMENTS, ROADMAP, and DECISIONS with Bedrock unblock still deferred under R018)
+- M004: COMPLETE
 - Current milestone: M004
 - Active slice: None
-- Next milestone: M004
-- Next action: M004 closure revalidation
+- Next milestone: M005
+- Next action: Begin M005 planning

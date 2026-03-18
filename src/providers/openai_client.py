@@ -11,6 +11,12 @@ from src.providers.cost_normalizer import normalize_cost_with_litellm
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 _HTTP_TIMEOUT_SECONDS = 30
+_GENERIC_HTTP_MESSAGE = "Request failed"
+_GENERIC_UNREACHABLE_MESSAGE = "Service unreachable"
+_GENERIC_INVALID_JSON_MESSAGE = "Invalid JSON response"
+_GENERIC_MALFORMED_RESPONSE_MESSAGE = "Malformed response"
+_GENERIC_API_KEY_FILE_MISSING_MESSAGE = "API key file does not exist"
+_GENERIC_API_KEY_FILE_EMPTY_MESSAGE = "API key file is empty"
 
 
 class OpenAIError(RuntimeError):
@@ -75,28 +81,22 @@ class OpenAIProviderClient:
             with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as http_exc:
-            body = ""
-            try:
-                body = http_exc.read().decode("utf-8", errors="replace")
-            except Exception:
-                pass
             status_code = int(getattr(http_exc, "code", 0) or 0)
-            msg = body.strip() or str(http_exc)
-            raise OpenAIHTTPError(status_code, f"HTTP {status_code}: {msg}") from http_exc
+            raise OpenAIHTTPError(status_code, f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
         except Exception as exc:
-            raise OpenAIError(f"OpenAI unreachable at {self._base}: {exc}") from exc
+            raise OpenAIError(_GENERIC_UNREACHABLE_MESSAGE) from exc
 
         try:
             parsed = json.loads(raw.decode("utf-8"))
         except Exception as exc:
-            raise OpenAIResponseError(f"Invalid JSON response: {exc}") from exc
+            raise OpenAIResponseError(_GENERIC_INVALID_JSON_MESSAGE) from exc
 
         try:
             choices = parsed.get("choices") or []
             message = (choices[0] or {}).get("message") or {}
             text = str(message.get("content") or "")
         except Exception as exc:
-            raise OpenAIResponseError(f"Malformed response: {exc}") from exc
+            raise OpenAIResponseError(_GENERIC_MALFORMED_RESPONSE_MESSAGE) from exc
 
         usage = parsed.get("usage") or {}
         tokens_in = usage.get("prompt_tokens")
@@ -128,8 +128,8 @@ class OpenAIProviderClient:
     def _read_api_key(self, api_key_path: str) -> str:
         path = Path(str(api_key_path)).expanduser()
         if not path.exists():
-            raise ValueError(f"API key file does not exist: {path}")
+            raise ValueError(_GENERIC_API_KEY_FILE_MISSING_MESSAGE)
         key = path.read_text(encoding="utf-8").strip()
         if not key:
-            raise ValueError(f"API key file is empty: {path}")
+            raise ValueError(_GENERIC_API_KEY_FILE_EMPTY_MESSAGE)
         return key

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.providers.base import ProviderClient
 from src.vertex.client import VertexAIClient
 
 

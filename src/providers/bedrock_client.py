@@ -7,6 +7,10 @@ import re
 from typing import Any
 
 
+_GENERIC_INVALID_JSON_MESSAGE = "bedrock response is not valid JSON"
+_GENERIC_UNSUPPORTED_MODEL_MESSAGE = "bedrock model_id not supported"
+
+
 class BedrockProviderClient:
     provider_id = "bedrock"
 
@@ -163,9 +167,7 @@ class BedrockProviderClient:
                 "body": json.dumps(payload).encode("utf-8"),
             }
 
-        raise NotImplementedError(
-            f"bedrock model_id not supported for real calls: {model_id}; supported: amazon.titan-text*, anthropic.claude-3*"
-        )
+        raise NotImplementedError(_GENERIC_UNSUPPORTED_MODEL_MESSAGE)
 
     def _extract_text(self, *, model_id: str, response: dict[str, Any]) -> str:
         body = (response or {}).get("body")
@@ -175,7 +177,7 @@ class BedrockProviderClient:
         try:
             parsed = json.loads(raw.decode("utf-8"))
         except Exception as exc:
-            raise ValueError(f"bedrock response is not valid JSON: {exc}")
+            raise ValueError(_GENERIC_INVALID_JSON_MESSAGE) from exc
 
         model_id = str(model_id)
         if model_id.startswith("amazon.titan-text"):
@@ -188,7 +190,5 @@ class BedrockProviderClient:
             first = content[0] if content else {}
             return str((first or {}).get("text") or "")
 
-        raise NotImplementedError(
-            f"bedrock model_id not supported for response parsing: {model_id}"
-        )
+        raise NotImplementedError(_GENERIC_UNSUPPORTED_MODEL_MESSAGE)
 

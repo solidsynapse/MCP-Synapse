@@ -11,6 +11,12 @@ from src.providers.cost_normalizer import normalize_cost_with_litellm
 
 _DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 _HTTP_TIMEOUT_SECONDS = 30
+_GENERIC_HTTP_MESSAGE = "Request failed"
+_GENERIC_UNREACHABLE_MESSAGE = "Service unreachable"
+_GENERIC_INVALID_JSON_MESSAGE = "Invalid JSON response"
+_GENERIC_MALFORMED_RESPONSE_MESSAGE = "Malformed response"
+_GENERIC_MISSING_API_KEY_FILE = "API key file does not exist"
+_GENERIC_EMPTY_API_KEY_FILE = "API key file is empty"
 
 
 class DeepSeekError(RuntimeError):
@@ -75,16 +81,10 @@ class DeepSeekProviderClient:
             with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as http_exc:
-            body = ""
-            try:
-                body = http_exc.read().decode("utf-8", errors="replace")
-            except Exception:
-                pass
             status_code = int(getattr(http_exc, "code", 0) or 0)
-            msg = body.strip() or str(http_exc)
-            raise DeepSeekHTTPError(status_code, f"HTTP {status_code}: {msg}") from http_exc
+            raise DeepSeekHTTPError(status_code, f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
         except Exception as exc:
-            raise DeepSeekError(f"DeepSeek unreachable at {self._base}: {exc}") from exc
+            raise DeepSeekError(_GENERIC_UNREACHABLE_MESSAGE) from exc
 
         return self._parse_response(raw)
 
@@ -92,14 +92,14 @@ class DeepSeekProviderClient:
         try:
             parsed = json.loads(raw.decode("utf-8"))
         except Exception as exc:
-            raise DeepSeekResponseError(f"Invalid JSON response: {exc}") from exc
+            raise DeepSeekResponseError(_GENERIC_INVALID_JSON_MESSAGE) from exc
 
         try:
             choices = parsed.get("choices") or []
             message = (choices[0] or {}).get("message") or {}
             text = str(message.get("content") or "")
         except Exception as exc:
-            raise DeepSeekResponseError(f"Malformed response: {exc}") from exc
+            raise DeepSeekResponseError(_GENERIC_MALFORMED_RESPONSE_MESSAGE) from exc
 
         usage = parsed.get("usage") or {}
         tokens_in = self._coerce_int(usage.get("prompt_tokens"))
@@ -121,10 +121,10 @@ class DeepSeekProviderClient:
     def _read_api_key(self, api_key_path: str) -> str:
         path = Path(str(api_key_path)).expanduser()
         if not path.exists():
-            raise ValueError(f"API key file does not exist: {path}")
+            raise ValueError(_GENERIC_MISSING_API_KEY_FILE)
         key = path.read_text(encoding="utf-8").strip()
         if not key:
-            raise ValueError(f"API key file is empty: {path}")
+            raise ValueError(_GENERIC_EMPTY_API_KEY_FILE)
         return key
 
     def _coerce_int(self, value: Any) -> int | None:

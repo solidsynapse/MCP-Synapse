@@ -10,6 +10,12 @@ from typing import Any
 
 _HTTP_TIMEOUT_SECONDS = 30
 _DEFAULT_HF_ENDPOINT = "https://router.huggingface.co/v1"
+_GENERIC_HTTP_MESSAGE = "Request failed"
+_GENERIC_UNREACHABLE_MESSAGE = "Service unreachable"
+_GENERIC_INVALID_JSON_MESSAGE = "Invalid JSON response"
+_GENERIC_PROVIDER_ERROR_MESSAGE = "Provider returned an error"
+_GENERIC_TOKEN_FILE_MISSING_MESSAGE = "Token file does not exist"
+_GENERIC_TOKEN_FILE_EMPTY_MESSAGE = "Token file is empty"
 
 
 class HuggingFaceProviderClient:
@@ -56,22 +62,18 @@ class HuggingFaceProviderClient:
         except urllib.error.HTTPError as http_exc:
             status_code = int(getattr(http_exc, "code", 0) or 0)
             try:
-                raw_err = http_exc.read()
-            except Exception as read_exc:
-                raise RuntimeError(
-                    f"HTTP {status_code}: <failed to read response body: {read_exc}>"
-                ) from read_exc
-            snippet = self._decode_snippet(raw_err)
-            raise RuntimeError(f"HTTP {status_code}: {snippet}")
+                http_exc.read()
+            except Exception:
+                pass
+            raise RuntimeError(f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
         except Exception as exc:
-            raise RuntimeError(str(exc)) from exc
+            raise RuntimeError(_GENERIC_UNREACHABLE_MESSAGE) from exc
 
         decoded = raw.decode("utf-8", errors="replace")
         try:
             parsed: Any = json.loads(decoded)
         except Exception as exc:
-            snippet = self._decode_snippet(raw)
-            raise RuntimeError(f"Invalid JSON response: {exc}; body={snippet}") from exc
+            raise RuntimeError(_GENERIC_INVALID_JSON_MESSAGE) from exc
 
         text = self._extract_text(parsed)
         usage = parsed.get("usage") if isinstance(parsed, dict) else None
@@ -93,16 +95,16 @@ class HuggingFaceProviderClient:
     def _read_token(self, credentials_path: str) -> str:
         path = Path(str(credentials_path)).expanduser()
         if not path.exists():
-            raise ValueError(f"Token file does not exist: {path}")
+            raise ValueError(_GENERIC_TOKEN_FILE_MISSING_MESSAGE)
         token = path.read_text(encoding="utf-8").strip()
         if not token:
-            raise ValueError(f"Token file is empty: {path}")
+            raise ValueError(_GENERIC_TOKEN_FILE_EMPTY_MESSAGE)
         return token
 
     def _extract_text(self, parsed: Any) -> str:
         if isinstance(parsed, dict):
             if "error" in parsed:
-                raise RuntimeError(str(parsed.get("error") or "Unknown error"))
+                raise RuntimeError(_GENERIC_PROVIDER_ERROR_MESSAGE)
             choices = parsed.get("choices")
             if isinstance(choices, list) and choices:
                 first = choices[0]
@@ -131,8 +133,3 @@ class HuggingFaceProviderClient:
             return base
         return f"{base}/v1"
 
-    def _decode_snippet(self, raw: bytes, *, limit: int = 500) -> str:
-        text = raw.decode("utf-8", errors="replace").strip()
-        if len(text) > limit:
-            return text[:limit]
-        return text
