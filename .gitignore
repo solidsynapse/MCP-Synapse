@@ -1,4 +1,16 @@
 ﻿# MCP Synapse (mcp-router) .gitignore
+AGENTS.md
+.gsd/
+.trae/
+.codex/
+fix_dummy_json.py
+check_models.py
+p3_be3_headless_health_runner.ps1
+MCP Router.spec
+bg-shell/
+mockups/
+tasks/
+ops/
 
 # Evidence (keep local, do not publish)
 docs/evidence/

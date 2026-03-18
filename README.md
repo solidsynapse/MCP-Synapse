@@ -9,9 +9,9 @@ MCP Synapse is a provider-agnostic MCP control plane for managing connections, r
 
 ## Early Access Status
 
-This repository is in the `v0.6.x` Early Access release lane.
+This repository is in the `v0.7.1` Early Access release lane.
 
-- Current release package: [`docs/release/releases/v0.6.1/`](docs/release/releases/v0.6.1/)
+- Current release package: [`docs/release/releases/v0.7.1/`](docs/release/releases/v0.7.1/)
 - Active working SSOT: [`.gsd/`](.gsd/)
 - Historical archive: [`docs/`](docs/)
 
@@ -25,10 +25,10 @@ Forks, modified builds, and redistributed versions must not use MCP Synapse bran
 
 ## Quick Start
 
-1. Use the official `v0.6.1` release package and review [`INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md).
-2. Verify installer hashes against [`SHA256SUMS.txt`](docs/release/releases/v0.6.1/SHA256SUMS.txt).
+1. Download the latest official GitHub release: <https://github.com/solidsynapse/MCP-Synapse/releases/latest>
+2. Verify installer hashes against [`SHA256SUMS.txt`](docs/release/releases/v0.7.1/SHA256SUMS.txt).
 3. Install and launch MCP Synapse.
-4. Review [`UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md) for current SmartScreen guidance.
+4. If Windows SmartScreen appears, review the published release notes and checksums before choosing whether to continue.
 
 ## Why MCP Synapse Exists
 
@@ -40,9 +40,11 @@ Forks, modified builds, and redistributed versions must not use MCP Synapse bran
 ## Key Capabilities
 
 - Connection lifecycle operations (create, edit, start, stop, delete)
+- Multi-provider connection surface across Vertex AI, OpenAI, Azure OpenAI, HuggingFace, Ollama, Anthropic, Groq, Gemini, OpenRouter, DeepSeek, and xAI/Grok
+- REST API adapter for local-first MCP access to arbitrary JSON endpoints
 - Dashboard and usage visibility for request-level operations
 - Policy surfaces (Persona, Optimizations)
-- Resilience surfaces (Budget Guards, Interceptors)
+- Resilience surfaces (Budget Guards with monitor/block/throttle enforcement, Interceptors)
 - Packaged desktop runtime with release integrity artifacts
 
 ## Architecture Boundaries
@@ -57,20 +59,20 @@ Forks, modified builds, and redistributed versions must not use MCP Synapse bran
 - Credentials are user-owned and managed locally
 - Runtime behavior is designed to be explicit and deterministic
 - Security reporting and disclosure policy: [`SECURITY.md`](SECURITY.md)
-- Release trust note: [`docs/release/releases/v0.6.1/TRUST_SECURITY.md`](docs/release/releases/v0.6.1/TRUST_SECURITY.md)
+- Release integrity artifacts: [`docs/release/releases/v0.7.1/SHA256SUMS.txt`](docs/release/releases/v0.7.1/SHA256SUMS.txt)
 
 ## Install and Verify Release Integrity
 
-- Install/run notes: [`docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md`](docs/release/releases/v0.6.1/INSTALL_RUN_NOTES.md)
-- Release notes: [`docs/release/releases/v0.6.1/RELEASE_NOTES.md`](docs/release/releases/v0.6.1/RELEASE_NOTES.md)
-- What changed: [`docs/release/releases/v0.6.1/WHAT_CHANGED.md`](docs/release/releases/v0.6.1/WHAT_CHANGED.md)
-- SHA256 checksums: [`docs/release/releases/v0.6.1/SHA256SUMS.txt`](docs/release/releases/v0.6.1/SHA256SUMS.txt)
-- Unsigned notice: [`docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md)
+- Latest GitHub release: <https://github.com/solidsynapse/MCP-Synapse/releases/latest>
+- Release notes: [`docs/release/releases/v0.7.1/RELEASE_NOTES.md`](docs/release/releases/v0.7.1/RELEASE_NOTES.md)
+- What changed: [`docs/release/releases/v0.7.1/WHAT_CHANGED.md`](docs/release/releases/v0.7.1/WHAT_CHANGED.md)
+- Known issues: [`docs/release/releases/v0.7.1/KNOWN_ISSUES.md`](docs/release/releases/v0.7.1/KNOWN_ISSUES.md)
+- SHA256 checksums: [`docs/release/releases/v0.7.1/SHA256SUMS.txt`](docs/release/releases/v0.7.1/SHA256SUMS.txt)
 
 PowerShell hash verification example:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\MCP Synapse_0.6.1_x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\MCP Synapse_0.7.1_x64-setup.exe
 ```
 
 Compare the output hash with `SHA256SUMS.txt`.

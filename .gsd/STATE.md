@@ -64,6 +64,7 @@
 - Post-M004 zombie port shutdown fix: COMPLETE (PASS; 2026-03-19; Tauri close path was confirmed to dispatch `connections.stop_all` rather than `stop_all()`, so bulk shutdown now force-stops runtime PIDs through the manager shutdown path instead of waiting for the slower per-connection graceful stop loop that could exceed the close budget)
 - Post-M004 zombie port follow-up (python.exe + 2s close budget): COMPLETE (PASS; 2026-03-19; Windows runtime spawn now prefers `python.exe` over `pythonw.exe`, and the Tauri close-event shutdown budget floor is now 2000 ms so the backend stop-all dispatch has more time to complete before the app exits)
 - Post-M004 persisted connection startup reset fix: COMPLETE (PASS; 2026-03-19; app startup now dispatches a one-time runtime-state reset so persisted connections are forced back to `stopped`, `runtime_pid` is cleared, and stale startup auto-run metadata no longer survives across launches)
+- Post-M004 public repo surface cleanup: COMPLETE (PASS; 2026-03-19; root README now reflects `v0.7.1` Early Access reality and public-root local/internal artifacts are gitignored without deleting files)
 - M004 closure revalidation: COMPLETE (PASS; 2026-03-18; S01-S05 are aligned across STATE, REQUIREMENTS, ROADMAP, and DECISIONS with Bedrock unblock still deferred under R018)
 - M004: COMPLETE
 - Current milestone: M004
