@@ -550,11 +550,11 @@
     <div class="ui-title">About</div>
     <div class="mt-2 space-y-2 text-sm" style="color: var(--text-muted);">
       <div class="font-medium" style="color: var(--text-primary);">What is MCP Synapse</div>
-      <div>MCP Synapse is a local-first control plane for MCP connections and request routing. It provides one interface across providers without per-vendor rewrites.</div>
+      <div>MCP Synapse is a local-first MCP gateway that connects any AI provider or REST API to your IDE agent. One control surface, any model, any data source — no vendor lock-in.</div>
       <div class="pt-1 font-medium" style="color: var(--text-primary);">Why developers use it</div>
-      <div>Developers use it for portable configuration, deterministic validation, and operational controls in a single workflow.</div>
+      <div>Use it to route IDE agent requests across AI providers with full cost visibility, or connect any REST API as an MCP tool — financial data, DevOps metrics, health records, or any JSON endpoint your workflow needs.</div>
       <div class="pt-1 font-medium" style="color: var(--text-primary);">Local-first and security</div>
-      <div>Credentials stay local, usage visibility stays local, and automatic fallback safety helps keep request flows stable.</div>
+      <div>Credentials stay local. No cloud dependency, no shared keys, no proxy service. Every request is logged locally with cost, latency, and provider audit trail.</div>
     </div>
   </div>
 </div>
