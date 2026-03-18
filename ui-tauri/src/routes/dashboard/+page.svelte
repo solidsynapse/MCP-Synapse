@@ -18,7 +18,7 @@
   type TopExpensive = { id: string; time?: string; connection?: string; provider?: string; model_id?: string; cost: string };
   type Breakdown = { name: string; color: string; cost: string };
   type Trend = { label: string; valueFormatted: string };
-  type Alert = { level: string; text: string; detail?: string; monitor_only?: boolean };
+  type Alert = { level: string; text: string; detail?: string; monitor_only?: boolean; enforcement_mode?: string };
 
   type DashboardState = {
     kpis: Kpi[];
@@ -142,8 +142,16 @@
         text: String(v.text || ""),
         detail: String(v.detail || ""),
         monitor_only: Boolean(v.monitor_only),
+        enforcement_mode: String(v.enforcement_mode || ""),
       })),
     };
+  }
+
+  function alertEnforcementLabel(alert: Alert) {
+    const mode = String(alert.enforcement_mode || "").trim().toLowerCase();
+    if (mode === "block") return "Block active";
+    if (mode === "throttle") return "Throttle active";
+    return alert.monitor_only ? "Monitor-only" : "";
   }
 
   function applyState(state: DashboardState | null | undefined) {
@@ -661,9 +669,9 @@
               <span class={`text-xs ${lvl === "critical" ? "text-red-400" : lvl === "warning" ? "text-amber-400" : "text-slate-300"}`}>{lvl === "critical" ? "!" : lvl === "warning" ? "i" : "*"}</span>
               <span class="flex min-w-0 flex-col">
                 <span class={`text-xs font-medium ${lvl === "critical" ? "text-red-200" : lvl === "warning" ? "text-amber-200" : "text-slate-200"}`}>{alert.text}</span>
-                {#if alert.monitor_only}
+                {#if alertEnforcementLabel(alert)}
                   <span class="mt-0.5 inline-flex w-fit rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-slate-300/85" style="border-color: var(--border-subtle);">
-                    Monitor-only
+                    {alertEnforcementLabel(alert)}
                   </span>
                 {/if}
                 {#if alert.detail}

@@ -70,3 +70,32 @@ def test_p5x_copy_config_url_only_and_verbose_modes() -> None:
     assert cfg2["mcpServers"]["ConnOne"]["capabilities"] == {"tools": {}}
     assert cfg2["mcpServers"]["ConnOne"]["x_mcp_synapse"] == {"capability_types": ["text"]}
     assert cfg2["mcpServers"]["ConnOne"]["provider_id"] == "openai"
+
+
+def test_p5x_schema_hint_rest_api_exposes_rest_fields() -> None:
+    mgr = ServerManager(config=_DummyConfig([]))
+    hint = mgr.connections_schema_hint({"provider_id": "rest_api"})
+    assert hint["ok"] is True
+    schema = hint["schema_hint"]
+    fields = schema["fields"]
+    field_ids = [str(f.get("id") or "") for f in fields]
+    assert "endpoint" in field_ids
+    assert "auth_type" in field_ids
+    assert "method" in field_ids
+    assert "response_field" in field_ids
+    assert "model_id" not in field_ids
+
+
+def test_p5x_preflight_rest_api_requires_response_mapping() -> None:
+    mgr = ServerManager(config=_DummyConfig([]))
+    result = mgr.preflight_connection(
+        {
+            "connection_name": "REST Demo",
+            "provider_id": "rest_api",
+            "endpoint": "https://api.example.com/v1/respond",
+            "auth_type": "none",
+            "method": "POST",
+        }
+    )
+    assert result["ok"] is False
+    assert "response_field is required for rest_api" in (result.get("errors") or [])

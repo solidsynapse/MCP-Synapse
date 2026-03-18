@@ -270,3 +270,19 @@ P4 UI PREP is ALLOWED when:
   - It must preserve D-033 BYOK + local-only rules and must not become a hosted proxy or shared-service path.
   - The `v0.9.x` lane authorizes a REST adapter snapshot only; WebSocket/streaming adapters remain later-lane work.
 
+## D-042 - D-031 budget package flip to explicit enforcement availability
+
+- Date: 2026-03-18
+- Decision:
+  - The resilience budget package is no longer monitor-only.
+  - Explicit user-configured enforcement modes are now authorized: `monitor`, `block`, and `throttle`.
+- Constraints:
+  - Enforcement must remain explicit and user-selected.
+  - `block` must reject requests with a visible error when the configured budget is already exceeded.
+  - `throttle` must add a visible deterministic delay; it must not become hidden retry, silent fallback, or implicit backoff.
+  - Default mode remains `monitor`.
+  - This decision does not authorize any proxy behavior, provider-side retry policy, or automatic budget bypass.
+- Boundary note:
+  - D-029 remains binding.
+  - Enforcement is allowed because it is deterministic, local, and user-configured rather than hidden behavior.
+

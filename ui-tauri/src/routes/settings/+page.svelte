@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { uiCacheGet, uiCacheSet, uiRunDeduped } from "$lib/ui_session";
+  import tauriConfig from "../../../src-tauri/tauri.conf.json";
 
   type DataRetention = "1m" | "3m" | "6m" | "unlimited";
   type PortMode = "auto" | "manual";
   type BannerKind = "idle" | "info" | "success" | "danger";
+  type UpdateStatus = "idle" | "checking" | "up_to_date" | "available" | "error";
   type DispatchError = { code?: string; message?: string };
+  type UpdateCheckPayload = { tag_name?: string; html_url?: string };
   type SettingsState = {
     data_retention: DataRetention;
     port_mode: PortMode;
@@ -15,6 +18,7 @@
   type SettingsResponse = {
     ok: boolean;
     status?: string;
+    text?: string | null;
     result?: SettingsState | null;
     error?: DispatchError | null;
   };
@@ -38,9 +42,56 @@
   let bannerText = $state("");
   const SETTINGS_CACHE_KEY = "settings.state";
   const SETTINGS_CACHE_TTL_MS = 120000;
+  const CURRENT_VERSION = typeof tauriConfig?.version === "string" ? tauriConfig.version : "unknown";
+  const RELEASES_PAGE_URL = "https://github.com/solidsynapse/MCP-Synapse/releases/latest";
+  const SHA256_GUIDE_URL = "https://github.com/solidsynapse/MCP-Synapse/releases/latest";
   let portPersistTimer: ReturnType<typeof setTimeout> | null = null;
   const ACTION_WIDTH_CLASS = "w-[140px]";
   const ACTION_COLUMN_WIDTH_CLASS = "w-[360px]";
+  let currentVersion = $state(CURRENT_VERSION);
+  let updateStatus = $state<UpdateStatus>("idle");
+  let updateMessage = $state("");
+  let latestTag = $state("");
+  let latestReleaseUrl = $state(RELEASES_PAGE_URL);
+
+  function updateStatusClass(status: UpdateStatus) {
+    if (status === "available") return "border-amber-900/40 bg-amber-400/10 text-amber-100";
+    if (status === "up_to_date") return "border-emerald-900/40 bg-emerald-400/10 text-emerald-200";
+    if (status === "error") return "border-rose-900/40 bg-rose-500/10 text-rose-200";
+    if (status === "checking") return "border-sky-900/40 bg-sky-400/10 text-sky-100";
+    return "border-slate-700/60 bg-white/5 text-slate-200";
+  }
+
+  function normalizeVersion(value: string) {
+    return value.trim().replace(/^v/i, "");
+  }
+
+  function versionParts(value: string) {
+    return normalizeVersion(value)
+      .split(".")
+      .map((part) => {
+        const match = part.match(/^\d+/);
+        return match ? Number.parseInt(match[0], 10) : 0;
+      });
+  }
+
+  function compareVersions(left: string, right: string) {
+    const leftParts = versionParts(left);
+    const rightParts = versionParts(right);
+    const maxLength = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      const leftValue = leftParts[index] ?? 0;
+      const rightValue = rightParts[index] ?? 0;
+      if (leftValue > rightValue) return 1;
+      if (leftValue < rightValue) return -1;
+    }
+    return 0;
+  }
+
+  function displayTag(value: string) {
+    const normalized = normalizeVersion(value);
+    return normalized ? `v${normalized}` : "unknown";
+  }
 
   function bannerClass(kind: BannerKind) {
     if (kind === "success") return "border-emerald-900/40 bg-emerald-400/10 text-emerald-200";
@@ -205,6 +256,42 @@
     }
   }
 
+  async function checkForUpdates() {
+    if (updateStatus === "checking") return;
+    updateStatus = "checking";
+    updateMessage = "Checking GitHub releases...";
+    latestTag = "";
+    latestReleaseUrl = RELEASES_PAGE_URL;
+    try {
+      const result = await dispatchInvoke({ op: "system.check_update" });
+      if (!result.ok) {
+        throw new Error(result.error?.message || "request failed");
+      }
+      let payload: UpdateCheckPayload = {};
+      if (typeof result.text === "string" && result.text.trim()) {
+        const parsed = JSON.parse(result.text) as UpdateCheckPayload;
+        if (parsed && typeof parsed === "object") {
+          payload = parsed;
+        }
+      }
+      const tagName = typeof payload.tag_name === "string" ? payload.tag_name : "";
+      const releaseUrl = typeof payload.html_url === "string" ? payload.html_url : RELEASES_PAGE_URL;
+      const currentTag = displayTag(currentVersion);
+      latestTag = tagName;
+      latestReleaseUrl = releaseUrl;
+      if (tagName && compareVersions(tagName, currentTag) > 0) {
+        updateStatus = "available";
+        updateMessage = `${displayTag(tagName)} available`;
+        return;
+      }
+      updateStatus = "up_to_date";
+      updateMessage = "You're up to date";
+    } catch (err: any) {
+      updateStatus = "error";
+      updateMessage = `Update check failed: ${err?.message || "network error"}`;
+    }
+  }
+
   function onDataRetentionChange(event: Event) {
     dataRetention = (event.currentTarget as HTMLSelectElement).value as DataRetention;
     void persistState();
@@ -254,6 +341,18 @@
       applyState(cached);
       refreshDelayMs = 90;
     }
+    void (async () => {
+      try {
+        const tauriGlobal = typeof window !== "undefined"
+          ? (window as any).__TAURI__ ?? (window as any).__TAURI_INTERNALS__
+          : null;
+        if (!tauriGlobal) return;
+        const { getVersion } = await import("@tauri-apps/api/app");
+        currentVersion = await getVersion();
+      } catch {
+        currentVersion = CURRENT_VERSION;
+      }
+    })();
     window.setTimeout(() => {
       void loadState();
     }, refreshDelayMs);
@@ -376,19 +475,54 @@
 
         <div class="border-b" style="border-color: var(--border-subtle);"></div>
 
-        <div class="flex items-center justify-between gap-4 py-3">
+        <div class="flex items-start justify-between gap-4 py-3">
           <div class="min-w-0">
-            <div class="text-sm font-semibold" style="color: var(--text-primary);">Check for updates</div>
-            <div class="mt-1 text-xs" style="color: var(--text-muted);">Opens the latest desktop download page.</div>
+            <div class="text-sm font-semibold" style="color: var(--text-primary);">Updates</div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted);">Current version: {displayTag(currentVersion)}. Update checks are explicit and user-controlled.</div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted);">Silent install is not supported. If a newer release exists, you decide whether to open GitHub Releases.</div>
+            {#if updateStatus !== "idle"}
+              <div class={`mt-3 inline-flex rounded-md border px-3 py-2 text-xs ${updateStatusClass(updateStatus)}`}>
+                <span>{updateMessage}</span>
+                {#if updateStatus === "available"}
+                  <a
+                    href={latestReleaseUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    class="ml-2 font-semibold underline underline-offset-2"
+                    style="color: inherit;"
+                  >
+                    Open release
+                  </a>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <button
+            type="button"
+            class={`ui-focus rounded-md border px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:scale-[0.98] ${ACTION_WIDTH_CLASS}`}
+            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary); box-shadow: var(--shadow-1);"
+            disabled={updateStatus === "checking"}
+            onclick={checkForUpdates}
+          >
+            {updateStatus === "checking" ? "Checking..." : "Check for Updates"}
+          </button>
+        </div>
+
+        <div class="border-b" style="border-color: var(--border-subtle);"></div>
+
+        <div class="flex items-start justify-between gap-4 py-3">
+          <div class="min-w-0">
+            <div class="text-sm font-semibold" style="color: var(--text-primary);">Release integrity</div>
+            <div class="mt-1 text-xs" style="color: var(--text-muted);">Verify downloaded artifacts against the published SHA256 manifest before install. Sigstore follows the D-038 integrity path; installation remains user-confirmed.</div>
           </div>
           <a
-            href="https://mcpsynapse.dev/download"
+            href={SHA256_GUIDE_URL}
             target="_blank"
             rel="noreferrer noopener"
             class={`ui-focus inline-flex items-center justify-center rounded-md border px-3 py-2 text-xs font-semibold transition-colors hover:bg-white/5 active:scale-[0.98] ${ACTION_WIDTH_CLASS}`}
             style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary); box-shadow: var(--shadow-1);"
           >
-            Open
+            SHA256 Guide
           </a>
         </div>
 

@@ -3,6 +3,7 @@
   import { uiCacheGet, uiCacheSet, uiRunDeduped } from "$lib/ui_session";
 
   type Unit = "usd_per_day" | "tokens_per_day";
+  type EnforcementMode = "monitor" | "block" | "throttle";
   type ScopeId = string;
 
   type Option<T extends string> = { id: T; label: string };
@@ -13,6 +14,7 @@
     selected_scope_id: string;
     limit_value: string;
     unit: Unit;
+    enforcement_mode: EnforcementMode;
     applied_guards: Array<{
       id: string;
       scope_id: string;
@@ -28,7 +30,7 @@
     error?: DispatchError | null;
     errors?: string[];
   };
-  type ConnectionItem = { id?: string; connection_name?: string };
+  type ConnectionItem = { id?: string; connection_name?: string; provider_id?: string };
   type ConnectionsListResponse = {
     ok: boolean;
     status?: string;
@@ -41,13 +43,34 @@
   const ALL_BRIDGES_SCOPE_ID = "all";
   const ALL_BRIDGES_LABEL = "All Bridges";
   const DEFAULT_SCOPE_OPTIONS: Option<ScopeId>[] = [{ id: ALL_BRIDGES_SCOPE_ID, label: ALL_BRIDGES_LABEL }];
+  const PROVIDER_LABELS: Record<string, string> = {
+    anthropic: "Anthropic",
+    azure_openai: "Azure OpenAI",
+    bedrock: "Amazon Bedrock",
+    deepseek: "DeepSeek",
+    gemini: "Gemini",
+    groq: "Groq",
+    huggingface: "Hugging Face",
+    ollama: "Ollama",
+    openai: "OpenAI",
+    openrouter: "OpenRouter",
+    rest_api: "Custom REST API",
+    vertex: "Vertex AI",
+    xai: "xAI / Grok",
+  };
 
   const UNIT_LABEL: Record<Unit, string> = { usd_per_day: "USD/day", tokens_per_day: "Tokens/day" };
+  const ENFORCEMENT_LABEL: Record<EnforcementMode, string> = {
+    monitor: "Monitor only",
+    block: "Block",
+    throttle: "Throttle",
+  };
 
   let selectedScopeId = $state<ScopeId>(ALL_BRIDGES_SCOPE_ID);
   let scopeOptions = $state<Option<ScopeId>[]>(DEFAULT_SCOPE_OPTIONS);
   let limitValue = $state("");
   let unit = $state<Unit>("usd_per_day");
+  let enforcementMode = $state<EnforcementMode>("monitor");
   let applied = $state<AppliedGuard[]>([]);
   let saveInFlight = $state(false);
   let bannerKind = $state<BannerKind>("idle");
@@ -105,6 +128,11 @@
   function normalizeState(state: BudgetState | null | undefined) {
     const selected = String(state?.selected_scope_id || ALL_BRIDGES_SCOPE_ID) as ScopeId;
     const normalizedUnit: Unit = state?.unit === "tokens_per_day" ? "tokens_per_day" : "usd_per_day";
+    const normalizedEnforcementMode: EnforcementMode = state?.enforcement_mode === "block"
+      ? "block"
+      : state?.enforcement_mode === "throttle"
+        ? "throttle"
+        : "monitor";
     const appliedRows: AppliedGuard[] = Array.isArray(state?.applied_guards)
       ? state!.applied_guards
           .filter((row) => row && typeof row.scope_id === "string" && typeof row.limit_value === "string")
@@ -120,6 +148,7 @@
       selectedScopeId: selected,
       limitValue: String(state?.limit_value || ""),
       unit: normalizedUnit,
+      enforcementMode: normalizedEnforcementMode,
       applied: appliedRows,
     };
   }
@@ -131,6 +160,7 @@
     selectedScopeId = normalized;
     limitValue = next.limitValue;
     unit = next.unit;
+    enforcementMode = next.enforcementMode;
     applied = next.applied;
     return fallbackApplied;
   }
@@ -140,6 +170,7 @@
       selected_scope_id: selectedScopeId,
       limit_value: limitValue,
       unit,
+      enforcement_mode: enforcementMode,
       applied_guards: applied.map((row) => ({
         id: row.id,
         scope_id: row.scopeId,
@@ -154,6 +185,12 @@
     if (Array.isArray(result.connections)) return result.connections;
     if (result.data && Array.isArray(result.data.connections)) return result.data.connections;
     return [];
+  }
+
+  function formatProviderLabel(providerId: string) {
+    const normalized = String(providerId || "").trim().toLowerCase();
+    if (!normalized) return "";
+    return PROVIDER_LABELS[normalized] || normalized;
   }
 
   function ensureValidScopeSelection(candidate: string): ScopeId {
@@ -176,6 +213,7 @@
       .map((row) => ({
         id: String(row.id || "").trim(),
         connectionName: String(row.connection_name || "").trim(),
+        providerId: String(row.provider_id || "").trim(),
       }))
       .filter((row) => row.id.length > 0)
       .sort((a, b) => {
@@ -186,7 +224,9 @@
 
     const dynamic = rows.map((row) => ({
       id: row.id,
-      label: row.connectionName ? `${row.connectionName} (${row.id})` : row.id,
+      label: row.connectionName
+        ? (row.providerId ? `${row.connectionName} (${formatProviderLabel(row.providerId)})` : row.connectionName)
+        : row.id,
     }));
     scopeOptions = [DEFAULT_SCOPE_OPTIONS[0], ...dynamic];
     uiCacheSet(BUDGET_SCOPES_CACHE_KEY, scopeOptions);
@@ -258,9 +298,7 @@
   }
 
   function scopeLabel(id: ScopeId, shorten = false) {
-    const raw = scopeOptions.find((s) => s.id === id)?.label ?? id;
-    if (!shorten || id === ALL_BRIDGES_SCOPE_ID) return raw;
-    return raw.replace(/\(([0-9a-fA-F-]{36})\)/g, (_, full: string) => `(${full.slice(0, 8)}…${full.slice(-6)})`);
+    return scopeOptions.find((s) => s.id === id)?.label ?? id;
   }
 
   function guardKey(scopeId: ScopeId, selectedUnit: Unit) {
@@ -324,6 +362,12 @@
 
   function onUnitChange(event: Event) {
     unit = (event.currentTarget as HTMLSelectElement).value === "tokens_per_day" ? "tokens_per_day" : "usd_per_day";
+    void persistBudgetState();
+  }
+
+  function onEnforcementModeChange(event: Event) {
+    const value = String((event.currentTarget as HTMLSelectElement).value || "").trim();
+    enforcementMode = value === "block" ? "block" : value === "throttle" ? "throttle" : "monitor";
     void persistBudgetState();
   }
 
@@ -419,6 +463,12 @@
     <div class="mt-2 text-[11px]" style="color: var(--text-muted);">
       Alert guidance: >=75% shows warning and >=90% shows critical in Dashboard health alerts.
     </div>
+    <div
+      class="mt-3 rounded-md border px-3 py-2 text-[11px] leading-4"
+      style="border-color: rgba(245, 158, 11, 0.28); background-color: rgba(245, 158, 11, 0.08); color: rgb(253, 230, 138);"
+    >
+      Enforcement mode will reject/delay requests when budget is exceeded.
+    </div>
 
     <div class="mt-4 grid gap-3 lg:grid-cols-3">
       <div class="lg:col-span-1">
@@ -437,6 +487,26 @@
       </div>
 
       <div class="lg:col-span-2">
+        <div class="ui-subtitle">Enforcement mode</div>
+        <div class="mt-2 flex flex-wrap items-start gap-2">
+          <select
+            class="ui-focus h-9 rounded-md border px-3 text-xs"
+            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
+            value={enforcementMode}
+            disabled={saveInFlight}
+            onchange={onEnforcementModeChange}
+          >
+            <option value="monitor">Monitor only</option>
+            <option value="block">Block</option>
+            <option value="throttle">Throttle</option>
+          </select>
+          <div class="min-w-[220px] flex-1 text-[11px]" style="color: var(--text-muted);">
+            Current mode: {ENFORCEMENT_LABEL[enforcementMode]}.
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-3">
         <div class="ui-subtitle">Limit</div>
         <div class="mt-2 flex flex-wrap items-start gap-2">
           <div class="min-w-[180px] flex-1">

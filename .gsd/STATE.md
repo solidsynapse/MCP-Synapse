@@ -38,7 +38,25 @@
 - M004 planning context: COMPLETE (`.gsd/milestones/M004/M004-CONTEXT.md` written)
 - D-041 recorded: COMPLETE (REST adapter positioned as a strategic expansion milestone)
 - M004 roadmap: COMPLETE (`.gsd/milestones/M004/M004-ROADMAP.md` written)
+- M004/S01 Anthropic provider: COMPLETE (PASS; evidence: docs\evidence\M004_S01_20260318-030230)
+- M004/S01 Groq provider: COMPLETE (PASS; evidence: docs\evidence\M004_S01_20260318-030230)
+- M004/S01 Gemini provider: COMPLETE (PASS; evidence: docs\evidence\M004_S01_20260318-030230)
+- M004/S01 OpenRouter provider: COMPLETE (PASS; evidence: docs\evidence\M004_S01_20260318-030230)
+- M004/S01 DeepSeek provider: COMPLETE (PASS; evidence: docs\evidence\M004_S01_20260318-030230)
+- M004/S01 xAI provider: COMPLETE (PASS; evidence: docs\evidence\M004_S01_20260318-030230)
+- M004/S01: COMPLETE
+- M004/S02 Bedrock Early Access UI badge: COMPLETE (PASS; evidence: docs\evidence\M004_S02_20260318-033946)
+- D-042 recorded: COMPLETE (budget package now allows explicit monitor/block/throttle enforcement modes)
+- M004/S03 Budget Enforcement Toggle: COMPLETE (PASS; evidence: docs\evidence\M004_S03_20260318-034936)
+- M004/S04 Auto-update + Sigstore: COMPLETE (PASS; evidence: docs\evidence\M004_S04_20260318-044558)
+- M004/S05 REST Adapter: COMPLETE (PASS; evidence: docs\evidence\M004_S05_20260318-051004)
+- Post-M004 UI fixes: COMPLETE (PASS; 2026-03-18; wave-2 providers exposed in Connections, Settings update check aligned to GitHub latest release, dark dropdown styling corrected for REST/Bedrock form selects, Budget Guard connection labels now use `name (provider)`)
+- Post-M004 UI fix follow-up: COMPLETE (PASS; 2026-03-18; Settings GitHub API endpoint revalidated, wave-2 model placeholders corrected, Quick Health Alerts budget badge now reflects enforcement mode)
+- Post-M004 settings/xAI follow-up: COMPLETE (PASS; 2026-03-18; GitHub release fetch now sends the explicit GitHub API version header and handles rate-limit responses, xAI provider label updated to `xAI (Grok)`, placeholder updated to `grok-3`)
+- Post-M004 Tauri HTTP capability audit: BLOCKER (2026-03-18; `ui-tauri/src-tauri/capabilities/default.json` grants only `core:default` + `opener:default`; no HTTP plugin/capability is present, and `ui-tauri/src-tauri/Cargo.toml` has no `tauri-plugin-http` dependency, so the GitHub fetch issue is not fixable by capability scope alone in the requested files)
+- Post-M004 backend update-check dispatch migration: COMPLETE (PASS; 2026-03-18; Settings no longer calls the GitHub API directly from the frontend and now uses the new `system.check_update` headless dispatch op instead, which avoids the Tauri HTTP capability gap)
+- Post-M004 update-check endpoint follow-up: COMPLETE (PASS; 2026-03-18; `system.check_update` now uses the GitHub releases list endpoint with `?per_page=1` and reads the newest entry from the returned array so pre-releases are visible)
 - Current milestone: M004
-- Active slice: S01
+- Active slice: None
 - Next milestone: M004
-- Next action: Begin M004/S01 - Provider Wave 2
+- Next action: M004 closure revalidation

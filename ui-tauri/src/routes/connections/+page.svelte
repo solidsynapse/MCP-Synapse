@@ -157,13 +157,33 @@
   let vaultBusy = $state(false);
   let vaultDeleteBusyId = $state<string | null>(null);
   let helperOpenId = $state<string | null>(null);
-  type ProviderOption = { id: ProviderId; label: string };
+  type ProviderOption = {
+    id: ProviderId;
+    label: string;
+    category: "llm" | "rest";
+    earlyAccess?: boolean;
+    infoNote?: string;
+  };
   const PROVIDERS: ProviderOption[] = [
-    { id: "openai", label: "OpenAI" },
-    { id: "azure_openai", label: "Azure OpenAI" },
-    { id: "vertex", label: "Vertex AI" },
-    { id: "huggingface", label: "Hugging Face" },
-    { id: "ollama", label: "Ollama" },
+    { id: "openai", label: "OpenAI", category: "llm" },
+    { id: "azure_openai", label: "Azure OpenAI", category: "llm" },
+    { id: "anthropic", label: "Anthropic", category: "llm" },
+    { id: "groq", label: "Groq", category: "llm" },
+    { id: "gemini", label: "Gemini", category: "llm" },
+    { id: "openrouter", label: "OpenRouter", category: "llm" },
+    { id: "deepseek", label: "DeepSeek", category: "llm" },
+    { id: "xai", label: "xAI (Grok)", category: "llm" },
+    { id: "vertex", label: "Vertex AI", category: "llm" },
+    {
+      id: "bedrock",
+      label: "Amazon Bedrock",
+      category: "llm",
+      earlyAccess: true,
+      infoNote: "Coded but not runtime-tested by the development team. Use at your own risk.",
+    },
+    { id: "huggingface", label: "Hugging Face", category: "llm" },
+    { id: "ollama", label: "Ollama", category: "llm" },
+    { id: "rest_api", label: "Custom REST API", category: "rest" },
   ];
 
   let newWizardProvider = $state<ProviderId | null>(null);
@@ -345,6 +365,15 @@
   function providerLabel(id: ProviderId | null) {
     if (!id) return "";
     return PROVIDERS.find((p) => p.id === id)?.label ?? id;
+  }
+
+  function providerOptionById(id: ProviderId | null) {
+    if (!id) return null;
+    return PROVIDERS.find((p) => p.id === id) ?? null;
+  }
+
+  function providerCategoryLabel(category: ProviderOption["category"]) {
+    return category === "rest" ? "REST Sources" : "Language Models";
   }
 
   function openProviderPicker() {
@@ -1244,15 +1273,32 @@
     return "file";
   }
 
+  function activeRestAuthType() {
+    const provider = String(newWizardProvider ?? "").trim().toLowerCase();
+    if (provider !== "rest_api") return "";
+    const raw = String(newWizardValues.auth_type ?? "none").trim().toLowerCase();
+    if (raw === "api_key_header") return "api_key_header";
+    if (raw === "bearer") return "bearer";
+    if (raw === "basic") return "basic";
+    return "none";
+  }
+
   function isWizardFieldVisible(fieldId: string) {
     const id = String(fieldId || "").trim().toLowerCase();
     const source = activeBedrockCredentialSource();
-    if (!source) return true;
-    if (id === "credentials_path") return source === "file";
-    if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
-      return source === "manual";
+    if (source) {
+      if (id === "credentials_path") return source === "file";
+      if (id === "aws_access_key_id" || id === "aws_secret_access_key" || id === "aws_session_token") {
+        return source === "manual";
+      }
+      if (id === "bedrock_api_key") return source === "api_key";
+      return true;
     }
-    if (id === "bedrock_api_key") return source === "api_key";
+    const restAuthType = activeRestAuthType();
+    if (restAuthType) {
+      if (id === "credentials_path") return restAuthType !== "none";
+      return true;
+    }
     return true;
   }
 
@@ -1270,12 +1316,19 @@
 
   function modelPlaceholderForProvider(providerId: ProviderId | null): string {
     const id = String(providerId || "").trim().toLowerCase();
+    if (id === "anthropic") return "Example: claude-3-5-sonnet-20241022";
+    if (id === "groq") return "Example: llama-3.3-70b-versatile";
+    if (id === "gemini") return "Example: gemini-1.5-flash";
+    if (id === "openrouter") return "Example: openai/gpt-4o-mini";
+    if (id === "deepseek") return "Example: deepseek-chat";
+    if (id === "xai") return "Example: grok-3";
     if (id === "vertex") return "Example: gemini-2.0-flash-001";
     if (id === "azure_openai") return "Example: gpt-4o-mini-deploy";
     if (id === "openai") return "Example: gpt-4o-mini";
     if (id === "bedrock") return "Example: anthropic.claude-3-5-sonnet";
     if (id === "huggingface") return "Example: meta-llama/Llama-3.1-8B-Instruct";
     if (id === "ollama") return "Example: llama3.1";
+    if (id === "rest_api") return "Hidden for REST adapter";
     return "Example: gpt-4o-mini";
   }
 
@@ -2076,6 +2129,14 @@
                     style="border-color: var(--border-subtle); background-color: var(--surface-2); box-shadow: var(--shadow-2);"
                   >
                     {#each providerOptions() as p, idx (p.id)}
+                      {#if idx === 0 || providerOptions()[idx - 1]?.category !== p.category}
+                        <div
+                          class="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                          style="color: var(--text-muted); background-color: rgba(255,255,255,0.03);"
+                        >
+                          {providerCategoryLabel(p.category)}
+                        </div>
+                      {/if}
                       <button
                         type="button"
                         class={`ui-focus block w-full px-3 py-2 text-left text-xs transition-colors ${
@@ -2087,7 +2148,17 @@
                           selectProvider(p.id);
                         }}
                       >
-                        <div class="font-medium">{p.label}</div>
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="font-medium">{p.label}</div>
+                          {#if p.earlyAccess}
+                            <span
+                              class="ui-pill shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                              style="background-color: rgba(245, 158, 11, 0.14); color: rgb(251, 191, 36); border: 1px solid rgba(245, 158, 11, 0.32);"
+                            >
+                              Early Access
+                            </span>
+                          {/if}
+                        </div>
                       </button>
                     {/each}
                   </div>
@@ -2153,7 +2224,7 @@
                       <select
                         id={`new-${field.id}`}
                         class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-                        style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                        style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
                         value={newWizardValues[field.id] || ""}
                         onchange={(e) => updateWizardField(field.id, (e.currentTarget as HTMLSelectElement).value)}
                       >
@@ -2223,7 +2294,25 @@
 
             <div class="mt-3">
               <div class="ui-subtitle">Selected provider</div>
-              <div class="mt-1 truncate text-xs font-medium" style="color: var(--text-primary);">{providerId ? providerLabel(providerId) : "-"}</div>
+              <div class="mt-1 flex items-center gap-2 text-xs font-medium" style="color: var(--text-primary);">
+                <span class="truncate">{providerId ? providerLabel(providerId) : "-"}</span>
+                {#if providerOptionById(providerId)?.earlyAccess}
+                  <span
+                    class="ui-pill shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    style="background-color: rgba(245, 158, 11, 0.14); color: rgb(251, 191, 36); border: 1px solid rgba(245, 158, 11, 0.32);"
+                  >
+                    Early Access
+                  </span>
+                {/if}
+              </div>
+              {#if providerOptionById(providerId)?.infoNote}
+                <div
+                  class="mt-2 rounded-md border px-3 py-2 text-[11px] leading-4"
+                  style="border-color: rgba(245, 158, 11, 0.32); background-color: rgba(245, 158, 11, 0.08); color: rgb(253, 230, 138);"
+                >
+                  {providerOptionById(providerId)?.infoNote}
+                </div>
+              {/if}
             </div>
 
             <div class="mt-3 rounded-md border border-slate-700/60 bg-white/5 p-3">
@@ -2269,7 +2358,7 @@
                           <select
                             id={`new-${field.id}`}
                             class="ui-focus mt-2 h-9 w-full rounded-md border px-3 text-xs"
-                            style="border-color: var(--border-subtle); background-color: rgba(0,0,0,0.12); color: var(--text-primary);"
+                            style="border-color: var(--border-subtle); background-color: var(--surface-2); color: var(--text-primary);"
                             value={newWizardValues[field.id] || ""}
                             onchange={(e) => updateWizardField(field.id, (e.currentTarget as HTMLSelectElement).value)}
                           >

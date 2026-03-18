@@ -5,6 +5,8 @@ import os
 import traceback
 import sys
 from pathlib import Path
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 
 def _repo_root_from_tools_dir() -> str:
@@ -656,6 +658,57 @@ def _dispatch_op(payload: dict) -> dict:
     if op == "settings.set_state":
         mgr = ServerManager()
         return _settings_state_response(mgr.set_settings_state(payload))
+
+    if op == "system.check_update":
+        release_api_url = "https://api.github.com/repos/solidsynapse/MCP-Synapse/releases?per_page=1"
+        release_page_url = "https://github.com/solidsynapse/MCP-Synapse/releases/latest"
+        request = urllib_request.Request(
+            release_api_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "MCP-Synapse/0.7.1",
+            },
+            method="GET",
+        )
+        try:
+            with urllib_request.urlopen(request, timeout=10) as response:
+                raw_payload = response.read().decode("utf-8", errors="replace")
+            parsed_payload = json.loads(raw_payload)
+            if not isinstance(parsed_payload, list):
+                return _fail("update_check_failed", "GitHub API returned an invalid payload.")
+            first_release = parsed_payload[0] if parsed_payload else None
+            if not isinstance(first_release, dict):
+                return _fail("update_check_failed", "GitHub API response did not include a release entry.")
+            tag_name = first_release.get("tag_name")
+            html_url = first_release.get("html_url")
+            if not isinstance(tag_name, str) or not tag_name.strip():
+                return _fail("update_check_failed", "GitHub API response did not include tag_name.")
+            payload_out = {
+                "tag_name": tag_name.strip(),
+                "html_url": html_url.strip() if isinstance(html_url, str) and html_url.strip() else release_page_url,
+            }
+            return _ok(json.dumps(payload_out, ensure_ascii=False))
+        except urllib_error.HTTPError as exc:
+            response_message = ""
+            try:
+                response_text = exc.read().decode("utf-8", errors="replace")
+                parsed_error = json.loads(response_text)
+                if isinstance(parsed_error, dict):
+                    response_message = str(parsed_error.get("message") or "").strip()
+            except Exception:
+                response_message = ""
+            if exc.code == 403 and "rate limit" in response_message.lower():
+                return _fail("update_check_failed", f"GitHub API rate limit reached: {response_message}")
+            message = response_message or exc.reason or f"HTTP {exc.code}"
+            return _fail("update_check_failed", f"GitHub API returned {exc.code}: {message}")
+        except urllib_error.URLError as exc:
+            message = getattr(exc, "reason", None) or exc
+            return _fail("update_check_failed", f"Update check network error: {message}")
+        except json.JSONDecodeError:
+            return _fail("update_check_failed", "GitHub API returned invalid JSON.")
+        except Exception as exc:
+            return _fail("update_check_failed", f"Update check failed: {_sanitize_error_detail(exc)}")
 
     if op == "bridges.toggle" or op == "bridges.test" or op == "bridges.config":
         bridge_id = payload.get("bridge_id")

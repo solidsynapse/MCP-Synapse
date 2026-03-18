@@ -76,6 +76,7 @@ class ConfigManager:
             "selected_scope_id": "all",
             "limit_value": "",
             "unit": "usd_per_day",
+            "enforcement_mode": "monitor",
             "applied_guards": [],
         }
 

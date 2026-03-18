@@ -41,10 +41,32 @@ from src.mcp_server.interceptor_p3_p1 import repair_json_syntax
 logger = logging.getLogger(__name__)
 
 
+class BudgetEnforcementError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        message: str,
+        provider_id: str,
+        model_id: str,
+        canonical_error: dict[str, object],
+    ) -> None:
+        super().__init__(message)
+        self.status = "error"
+        self.error_type = "budget_guard_blocked"
+        self.request_id = f"budget-block-{uuid.uuid4().hex[:12]}"
+        self.provider = str(provider_id or "")
+        self.model_id = str(model_id or "")
+        self.code = str(canonical_error.get("code") or "BUDGET_BLOCKED")
+        self.reason = str(canonical_error.get("reason") or message)
+        self.canonical_error = canonical_error
+        self.latency_ms = 0
+
+
 class ServerManager:
     _REQUEST_DEDUP_TTL_SECONDS = 20.0
     _VERTEX_PROBE_CLIENT_TTL_SECONDS = 300.0
     _VERTEX_PROBE_TIMEOUT_SECONDS = 4.0
+    _BUDGET_THROTTLE_DELAY_SECONDS = 1.5
 
     def __init__(
         self,
@@ -707,6 +729,10 @@ class ServerManager:
     def _is_budget_unit(value: str) -> bool:
         return value in ("usd_per_day", "tokens_per_day")
 
+    @staticmethod
+    def _is_budget_enforcement_mode(value: str) -> bool:
+        return value in ("monitor", "block", "throttle")
+
     def _canonicalize_resilience_budget_state(self, payload: dict | None) -> dict:
         source = payload if isinstance(payload, dict) else {}
         base = self._config.default_resilience_budget_state()
@@ -716,6 +742,14 @@ class ServerManager:
         limit_value = str(source.get("limit_value") if source.get("limit_value") is not None else base.get("limit_value") or "").strip()
         unit_raw = str(source.get("unit") or base.get("unit") or "usd_per_day").strip()
         unit = unit_raw if self._is_budget_unit(unit_raw) else "usd_per_day"
+        enforcement_mode_raw = str(
+            source.get("enforcement_mode") or base.get("enforcement_mode") or "monitor"
+        ).strip().lower()
+        enforcement_mode = (
+            enforcement_mode_raw
+            if self._is_budget_enforcement_mode(enforcement_mode_raw)
+            else "monitor"
+        )
 
         applied_src = source.get("applied_guards")
         applied_guards: list[dict[str, str]] = []
@@ -744,6 +778,7 @@ class ServerManager:
             "selected_scope_id": selected_scope_id,
             "limit_value": limit_value,
             "unit": unit,
+            "enforcement_mode": enforcement_mode,
             "applied_guards": applied_guards,
         }
 
@@ -772,6 +807,14 @@ class ServerManager:
             return {
                 "ok": False,
                 "errors": ["limit_value must be string"],
+                "warnings": [],
+                "error_code": "invalid_resilience_budget_state",
+            }
+        enforcement_mode_raw = str(state_payload.get("enforcement_mode") or "").strip().lower()
+        if enforcement_mode_raw and not self._is_budget_enforcement_mode(enforcement_mode_raw):
+            return {
+                "ok": False,
+                "errors": ["enforcement_mode must be one of: monitor, block, throttle"],
                 "warnings": [],
                 "error_code": "invalid_resilience_budget_state",
             }
@@ -1098,6 +1141,129 @@ class ServerManager:
             return None
         return parsed
 
+    def _current_budget_usage_by_scope(self) -> tuple[dict[str, float], dict[str, int]]:
+        rows: list[dict[str, object]] = []
+        list_usage = getattr(self._usage_db, "list_usage", None)
+        if callable(list_usage):
+            try:
+                raw_rows = list_usage(limit=50000, most_recent=True)
+                if isinstance(raw_rows, list):
+                    rows = [row for row in raw_rows if isinstance(row, dict)]
+            except Exception:
+                rows = []
+
+        today_key = datetime.now(timezone.utc).date().isoformat()
+        daily_cost_by_scope: dict[str, float] = defaultdict(float)
+        daily_tokens_by_scope: dict[str, int] = defaultdict(int)
+        for row in rows:
+            if not self._matches_utc_day(row.get("timestamp"), today_key):
+                continue
+            scope_id = str(row.get("agent_id") or "").strip()
+            cost_value = float(row.get("cost_usd") or 0.0)
+            token_value = int(row.get("tokens_input") or 0) + int(row.get("tokens_output") or 0)
+            daily_cost_by_scope["all"] += cost_value
+            daily_tokens_by_scope["all"] += token_value
+            if scope_id:
+                daily_cost_by_scope[scope_id] += cost_value
+                daily_tokens_by_scope[scope_id] += token_value
+        return daily_cost_by_scope, daily_tokens_by_scope
+
+    def _evaluate_budget_enforcement(self, connection_id: str) -> dict[str, object]:
+        get_budget_state = getattr(self._config, "get_resilience_budget_state", None)
+        if not callable(get_budget_state):
+            return {"mode": "monitor", "triggered": False}
+        budget_state = self._canonicalize_resilience_budget_state(get_budget_state())
+        mode = str(budget_state.get("enforcement_mode") or "monitor").strip().lower() or "monitor"
+        if mode == "monitor":
+            return {"mode": "monitor", "triggered": False}
+
+        guards_src = budget_state.get("applied_guards")
+        guards = guards_src if isinstance(guards_src, list) else []
+        if not guards:
+            return {"mode": mode, "triggered": False}
+
+        connection_name_by_id: dict[str, str] = {}
+        for connection in self._config.list_connections():
+            if not isinstance(connection, dict):
+                continue
+            cid = str(connection.get("id") or "").strip()
+            if not cid:
+                continue
+            connection_name_by_id[cid] = str(connection.get("connection_name") or "").strip() or cid
+
+        daily_cost_by_scope, daily_tokens_by_scope = self._current_budget_usage_by_scope()
+        triggered_rows: list[dict[str, object]] = []
+        connection_scope = str(connection_id or "").strip()
+        for guard in guards:
+            if not isinstance(guard, dict):
+                continue
+            scope_id = str(guard.get("scope_id") or "").strip()
+            if scope_id not in {"all", connection_scope}:
+                continue
+            unit = str(guard.get("unit") or "").strip()
+            limit = self._parse_positive_limit(guard.get("limit_value"))
+            if limit is None:
+                continue
+
+            if unit == "usd_per_day":
+                consumed = float(daily_cost_by_scope.get(scope_id, 0.0))
+                unit_label = "USD/day"
+                consumed_label = self._format_usd(consumed)
+                limit_label = self._format_usd(limit)
+            elif unit == "tokens_per_day":
+                consumed = float(daily_tokens_by_scope.get(scope_id, 0))
+                unit_label = "tokens/day"
+                consumed_label = str(int(consumed))
+                limit_label = str(int(limit))
+            else:
+                continue
+
+            if consumed < limit:
+                continue
+
+            scope_label = "All Bridges" if scope_id == "all" else connection_name_by_id.get(scope_id, scope_id)
+            triggered_rows.append(
+                {
+                    "scope_id": scope_id,
+                    "scope_label": scope_label,
+                    "unit": unit,
+                    "unit_label": unit_label,
+                    "consumed": consumed,
+                    "consumed_label": consumed_label,
+                    "limit": limit,
+                    "limit_label": limit_label,
+                }
+            )
+
+        if not triggered_rows:
+            return {"mode": mode, "triggered": False}
+
+        triggered_rows.sort(
+            key=lambda row: (
+                0 if str(row.get("scope_id") or "") == connection_scope else 1,
+                str(row.get("unit") or ""),
+            )
+        )
+        selected = triggered_rows[0]
+        message = (
+            f"Budget enforcement {mode} active: {selected['scope_label']} is at or above limit "
+            f"({selected['consumed_label']} / {selected['limit_label']} {selected['unit_label']})."
+        )
+        return {
+            "mode": mode,
+            "triggered": True,
+            "scope_id": selected["scope_id"],
+            "scope_label": selected["scope_label"],
+            "unit": selected["unit"],
+            "unit_label": selected["unit_label"],
+            "consumed": selected["consumed"],
+            "consumed_label": selected["consumed_label"],
+            "limit": selected["limit"],
+            "limit_label": selected["limit_label"],
+            "message": message,
+            "delay_seconds": float(self._BUDGET_THROTTLE_DELAY_SECONDS),
+        }
+
     def _build_dashboard_live_state(self) -> dict[str, object]:
         dashboard_state_cfg = self._config.get_dashboard_state()
         dashboard_state_cfg = dashboard_state_cfg if isinstance(dashboard_state_cfg, dict) else {}
@@ -1187,6 +1353,11 @@ class ServerManager:
             "bedrock",
             "anthropic",
             "groq",
+            "gemini",
+            "openrouter",
+            "deepseek",
+            "xai",
+            "rest_api",
             "lmstudio",
             "ollama",
             "huggingface",
@@ -1302,6 +1473,7 @@ class ServerManager:
                 daily_tokens_by_scope[scope_id] += token_value
 
         budget_state = self._canonicalize_resilience_budget_state(self._config.get_resilience_budget_state())
+        budget_enforcement_mode = str(budget_state.get("enforcement_mode") or "monitor").strip().lower() or "monitor"
         guards_src = budget_state.get("applied_guards")
         guards = guards_src if isinstance(guards_src, list) else []
         for guard in guards:
@@ -1337,6 +1509,7 @@ class ServerManager:
                     "text": text,
                     "detail": detail,
                     "monitor_only": monitor_only,
+                    "enforcement_mode": budget_enforcement_mode,
                     "_utilization": utilization,
                 }
             )
@@ -1751,6 +1924,84 @@ class ServerManager:
 
     def _build_connection_schema_hint(self, provider_id: str) -> dict[str, object]:
         provider = str(provider_id or "").strip()
+        if provider == "rest_api":
+            return {
+                "fields": [
+                    {
+                        "id": "connection_name",
+                        "label": "Connection name",
+                        "required": True,
+                        "kind": "text",
+                        "placeholder": "Example: Customer Support API",
+                        "help": "Used as the server name in copied MCP config.",
+                        "section": "common",
+                    },
+                    {
+                        "id": "endpoint",
+                        "label": "Endpoint URL",
+                        "required": True,
+                        "kind": "text",
+                        "placeholder": "https://api.example.com/v1/chat",
+                        "help": "REST endpoint called by the local runtime.",
+                        "section": "common",
+                    },
+                    {
+                        "id": "auth_type",
+                        "label": "Auth type",
+                        "required": True,
+                        "kind": "select",
+                        "options": [
+                            {"value": "none", "label": "None"},
+                            {"value": "api_key_header", "label": "API Key Header"},
+                            {"value": "bearer", "label": "Bearer"},
+                            {"value": "basic", "label": "Basic"},
+                        ],
+                        "placeholder": "none",
+                        "help": "Authentication mode used by the REST endpoint.",
+                        "section": "advanced",
+                    },
+                    {
+                        "id": "method",
+                        "label": "Method",
+                        "required": True,
+                        "kind": "select",
+                        "options": [
+                            {"value": "GET", "label": "GET"},
+                            {"value": "POST", "label": "POST"},
+                        ],
+                        "placeholder": "POST",
+                        "help": "HTTP method used for runtime calls.",
+                        "section": "advanced",
+                    },
+                    {
+                        "id": "response_field",
+                        "label": "Response field",
+                        "required": True,
+                        "kind": "text",
+                        "placeholder": "data.output_text",
+                        "help": "Dot-path inside the JSON response that resolves to the final text.",
+                        "section": "advanced",
+                    },
+                    {
+                        "id": "credentials_path",
+                        "label": "Credentials path",
+                        "required": False,
+                        "kind": "text",
+                        "placeholder": r"C:\path\to\rest_auth.txt",
+                        "help": "Optional local secret file. Bearer and API Key Header expect a raw token. Basic expects username:password.",
+                        "section": "advanced",
+                    },
+                ],
+                "suggested_defaults": {
+                    "auth_type": "none",
+                    "method": "POST",
+                    "response_field": "text",
+                },
+                "notes": [
+                    "REST adapter is a snapshot-level domain-agnostic surface.",
+                    "Auth remains local-only and user-managed.",
+                ],
+            }
         fields: list[dict[str, object]] = [
             {
                 "id": "connection_name",
@@ -2031,7 +2282,9 @@ class ServerManager:
             errors.append("connection_name is required")
         if not provider_id:
             errors.append("provider_id is required")
-        if not model_id:
+        if provider_id == "rest_api" and not model_id:
+            model_id = "custom_rest_api"
+        if not model_id and provider_id != "rest_api":
             errors.append("model_id is required")
 
         schema_hint = self._build_connection_schema_hint(provider_id)
@@ -2120,6 +2373,20 @@ class ServerManager:
             hf_enabled = hf_enable_text in {"true", "1", "yes", "on"}
             if not hf_enabled:
                 errors.append("hf_enable_network must be true for live calls")
+        elif provider_id == "rest_api":
+            auth_type = str(payload.get("auth_type") or "none").strip().lower()
+            method = str(payload.get("method") or "POST").strip().upper()
+            response_field = str(payload.get("response_field") or "").strip()
+            if not endpoint:
+                errors.append("endpoint is required for rest_api")
+            if auth_type not in ("none", "api_key_header", "bearer", "basic"):
+                errors.append("auth_type must be one of: none, api_key_header, bearer, basic")
+            if method not in ("GET", "POST"):
+                errors.append("method must be one of: GET, POST")
+            if not response_field:
+                errors.append("response_field is required for rest_api")
+            if auth_type != "none" and not credentials_path:
+                errors.append("credentials_path is required when auth_type is not none")
 
         if endpoint:
             errors.extend(self._validate_http_endpoint(endpoint, "endpoint"))
@@ -2217,6 +2484,19 @@ class ServerManager:
             normalized_payload.pop("endpoint", None)
             if hf_endpoint:
                 normalized_payload["hf_endpoint"] = hf_endpoint
+        elif provider_id == "rest_api":
+            auth_type = str(payload.get("auth_type") or "none").strip().lower()
+            method = str(payload.get("method") or "POST").strip().upper()
+            response_field = str(payload.get("response_field") or "").strip()
+            normalized_payload["model_id"] = model_id or "custom_rest_api"
+            if auth_type:
+                normalized_payload["auth_type"] = auth_type
+            if method:
+                normalized_payload["method"] = method
+            if response_field:
+                normalized_payload["response_field"] = response_field
+            if auth_type == "none":
+                normalized_payload.pop("credentials_path", None)
 
         if provider_id == "vertex" and not errors:
             project_id = str(payload.get("project_id") or "").strip()
@@ -3283,6 +3563,7 @@ class ServerManager:
         routed_context = router.route(context)
         provider = ProviderAdapterV1()
         observer = ObserverV1()
+        budget_enforcement = self._evaluate_budget_enforcement(str(target.get("id") or connection_id))
 
         dedup_key = self._request_dedup_key(
             connection_id=str(target.get("id") or connection_id),
@@ -3313,10 +3594,38 @@ class ServerManager:
                 return dedup_result
 
         try:
+            if bool(budget_enforcement.get("triggered")):
+                if str(budget_enforcement.get("mode") or "") == "block":
+                    message = str(budget_enforcement.get("message") or "Budget guard blocked request.")
+                    canonical_error = self._build_canonical_error(
+                        phase="runtime",
+                        provider_id=provider_id,
+                        model_id=model_id,
+                        request_id=None,
+                        reason=message,
+                        raw=message,
+                        code="BUDGET_BLOCKED",
+                    )
+                    raise BudgetEnforcementError(
+                        message=message,
+                        provider_id=provider_id,
+                        model_id=model_id,
+                        canonical_error=canonical_error,
+                    )
+                if str(budget_enforcement.get("mode") or "") == "throttle":
+                    time.sleep(float(budget_enforcement.get("delay_seconds") or self._BUDGET_THROTTLE_DELAY_SECONDS))
+
             result = provider.execute(routed_context, prompt)
             result = self._apply_json_syntax_repair_interceptor(result)
             result["request_dedup_enabled"] = request_dedup_enabled
             result["request_dedup_hit"] = False
+            result["budget_enforcement_mode"] = str(budget_enforcement.get("mode") or "monitor")
+            result["budget_enforcement_triggered"] = bool(budget_enforcement.get("triggered"))
+            if str(budget_enforcement.get("mode") or "") == "throttle" and bool(budget_enforcement.get("triggered")):
+                result["budget_enforcement_delay_ms"] = int(
+                    round(float(budget_enforcement.get("delay_seconds") or self._BUDGET_THROTTLE_DELAY_SECONDS) * 1000.0)
+                )
+                result["budget_enforcement_message"] = str(budget_enforcement.get("message") or "")
             if request_dedup_enabled:
                 self._request_dedup_put(
                     key=dedup_key,
