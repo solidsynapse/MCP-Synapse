@@ -31,7 +31,7 @@ const WORKER_DECISION_LOG_FILE: &str = "runtime_worker_decision.jsonl";
 const LIFECYCLE_LOG_FILE: &str = "runtime_lifecycle.jsonl";
 const DISPATCH_ENTRY_NAME: &str = "dispatch_execute_request_v1";
 const CLOSE_BUDGET_ENV: &str = "MCP_SYNAPSE_CLOSE_BUDGET_MS";
-const CLOSE_BUDGET_DEFAULT_MS: u64 = 1500;
+const CLOSE_BUDGET_DEFAULT_MS: u64 = 2000;
 const INTERNAL_DEBUG_OBS_ENV: &str = "MCP_SYNAPSE_INTERNAL_DEBUG_OBS";
 #[cfg(windows)]
 static SINGLE_INSTANCE_MUTEX_HANDLE: OnceLock<usize> = OnceLock::new();
@@ -148,7 +148,7 @@ fn close_budget_ms() -> u64 {
             .trim()
             .parse::<u64>()
             .ok()
-            .filter(|v| *v >= 100)
+            .filter(|v| *v >= 2000)
             .unwrap_or(CLOSE_BUDGET_DEFAULT_MS),
         Err(_) => CLOSE_BUDGET_DEFAULT_MS,
     }
@@ -526,6 +526,75 @@ fn best_effort_stop_all_connections_with_budget(repo_root: &PathBuf) -> serde_js
     }
 }
 
+fn best_effort_reset_connection_runtime_state_on_startup(repo_root: &PathBuf) -> serde_json::Value {
+    let start = Instant::now();
+    let script = repo_root.join("tools").join("headless_dispatch_v1.py");
+    let python = std::env::var("MCP_SYNAPSE_PYTHON").unwrap_or_else(|_| "python".to_string());
+    let prompt = r#"{"op":"connections.reset_runtime_state"}"#;
+    let mut command = Command::new(python);
+    command
+        .arg(script)
+        .arg("--agent-id")
+        .arg("connections")
+        .arg("--prompt")
+        .arg(prompt)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = match command.spawn() {
+        Ok(value) => value,
+        Err(err) => {
+            return json!({
+                "status": "spawn_failed",
+                "scope": "startup_reset_runtime_state",
+                "elapsed_ms": start.elapsed().as_millis() as u64,
+                "error": log_text(&err.to_string(), 180),
+            });
+        }
+    };
+
+    let budget_ms = 2000_u64;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return json!({
+                    "status": "completed",
+                    "scope": "startup_reset_runtime_state",
+                    "elapsed_ms": start.elapsed().as_millis() as u64,
+                    "exit_code": status.code(),
+                });
+            }
+            Ok(None) => {
+                if start.elapsed().as_millis() as u64 >= budget_ms {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return json!({
+                        "status": "timeout_killed_fail_open",
+                        "scope": "startup_reset_runtime_state",
+                        "elapsed_ms": start.elapsed().as_millis() as u64,
+                        "budget_ms": budget_ms,
+                    });
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return json!({
+                    "status": "wait_error_fail_open",
+                    "scope": "startup_reset_runtime_state",
+                    "elapsed_ms": start.elapsed().as_millis() as u64,
+                    "budget_ms": budget_ms,
+                    "error": log_text(&err.to_string(), 180),
+                });
+            }
+        }
+    }
+}
+
 #[cfg(windows)]
 fn to_wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -595,6 +664,15 @@ pub fn run() {
                 let _ = window.eval(DESKTOP_UX_HARDENING_JS);
             }
             if let Some(repo_root) = repo_root_for_lifecycle.as_ref() {
+                append_lifecycle_log(
+                    repo_root,
+                    "startup_runtime_reset_begin",
+                    json!({
+                        "phase": "critical_before_ready",
+                    }),
+                );
+                let reset_outcome = best_effort_reset_connection_runtime_state_on_startup(repo_root);
+                append_lifecycle_log(repo_root, "startup_runtime_reset_end", reset_outcome);
                 append_lifecycle_log(
                     repo_root,
                     "startup_ready",

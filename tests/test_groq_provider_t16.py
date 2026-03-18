@@ -64,6 +64,24 @@ def test_factory_create_groq_returns_client(tmp_path: Path):
     assert isinstance(client, GroqProviderClient)
 
 
+def test_groq_local_bridge_endpoint_uses_provider_default_base_url(tmp_path: Path):
+    key_file = tmp_path / "key.txt"
+    key_file.write_text("k", encoding="utf-8")
+    agent = {
+        "id": "agent-groq",
+        "name": "Groq Agent",
+        "endpoint": "http://127.0.0.1:5002/sse",
+    }
+
+    client = GroqProviderClient(
+        agent=agent,
+        model_id="llama-3.3-70b-versatile",
+        api_key_path=str(key_file),
+    )
+
+    assert client._base == "https://api.groq.com/openai/v1"
+
+
 def test_groq_success_logs_usage_row(tmp_path: Path):
     agent = _make_agent()
     key_file = tmp_path / "key.txt"
@@ -81,8 +99,11 @@ def test_groq_success_logs_usage_row(tmp_path: Path):
         "choices": [{"message": {"content": "hi"}}],
         "usage": {"prompt_tokens": 3, "completion_tokens": 5},
     }
-    with patch("src.providers.groq_client.urllib.request.urlopen") as mock_urlopen:
-        mock_urlopen.return_value = _FakeHTTPResponse(payload)
+    with patch("src.providers.groq_client.requests") as mock_requests:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = json.dumps(payload).encode("utf-8")
+        mock_requests.request.return_value = mock_response
         result = manager.execute_request_v1(agent["id"], "hello")
 
     assert result["text"] == "hi"
@@ -132,8 +153,11 @@ def test_groq_http_error_raises_and_logs_error_row(tmp_path: Path, status_code: 
         fp=body,
     )
 
-    with patch("src.providers.groq_client.urllib.request.urlopen") as mock_urlopen:
-        mock_urlopen.side_effect = http_err
+    with patch("src.providers.groq_client.requests") as mock_requests:
+        mock_response = MagicMock()
+        mock_response.status_code = status_code
+        mock_response.content = b'{"error":"invalid"}'
+        mock_requests.request.return_value = mock_response
         with pytest.raises(GroqHTTPError) as excinfo:
             manager.execute_request_v1(agent["id"], "hello")
 
@@ -170,11 +194,11 @@ def test_groq_streaming_raises_and_logs_error_row(tmp_path: Path):
     mock_creds.get_credential.return_value = str(key_file)
     manager = ServerManager(config=mock_config, creds=mock_creds, usage_db=usage_db)
 
-    with patch("src.providers.groq_client.urllib.request.urlopen") as mock_urlopen:
+    with patch("src.providers.groq_client.requests") as mock_requests:
         with pytest.raises(NotImplementedError) as excinfo:
             manager.execute_request_v1(agent["id"], "hello")
         assert str(excinfo.value) == "groq streaming not implemented"
-        mock_urlopen.assert_not_called()
+        mock_requests.request.assert_not_called()
 
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(

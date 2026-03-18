@@ -1508,13 +1508,19 @@
     };
     if (target.providerId === "azure_openai") {
       const mappedEndpoint = String((target.options ?? {})["azure_endpoint"] ?? "").trim();
-      if (!mappedEndpoint && target.endpoint) {
+      if (!mappedEndpoint && target.endpoint && !isLocalBridgeEndpoint(target.endpoint)) {
         newWizardValues = { ...newWizardValues, azure_endpoint: target.endpoint };
       }
       const mappedDeployment = String((target.options ?? {})["deployment_name"] ?? "").trim();
       if (mappedDeployment) {
         newWizardValues = { ...newWizardValues, model_id: mappedDeployment };
       }
+    } else if (target.providerId === "groq") {
+      const mappedBaseUrl = String((target.options ?? {})["groq_base_url"] ?? "").trim();
+      const runtimeEndpoint = String(target.endpoint ?? "").trim();
+      const endpointForForm =
+        mappedBaseUrl || (!isLocalBridgeEndpoint(runtimeEndpoint) ? runtimeEndpoint : "");
+      newWizardValues = { ...newWizardValues, endpoint: endpointForForm, groq_base_url: endpointForForm };
     } else if (target.providerId === "ollama") {
       const mappedBaseUrl = String((target.options ?? {})["ollama_base_url"] ?? "").trim();
       const runtimeEndpoint = String(target.endpoint ?? "").trim();

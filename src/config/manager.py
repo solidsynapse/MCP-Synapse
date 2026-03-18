@@ -324,9 +324,9 @@ class ConfigManager:
                 continue
             connection["status"] = status
             if endpoint:
-                connection["endpoint"] = str(endpoint)
+                connection["runtime_endpoint"] = str(endpoint)
             elif status == "stopped":
-                connection.pop("endpoint", None)
+                connection.pop("runtime_endpoint", None)
             if runtime_pid is not None:
                 connection["runtime_pid"] = int(runtime_pid)
             else:

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+try:
+    import requests
+except Exception:  # pragma: no cover - optional runtime path
+    requests = None
 
 from src.providers.cost_normalizer import normalize_cost_with_litellm
 from src.providers.groq_contract_pr5 import build_groq_chat_payload
@@ -18,6 +24,7 @@ _GENERIC_INVALID_JSON_MESSAGE = "Invalid JSON response"
 _GENERIC_MALFORMED_RESPONSE_MESSAGE = "Malformed response"
 _GENERIC_MISSING_API_KEY_FILE = "API key file does not exist"
 _GENERIC_EMPTY_API_KEY_FILE = "API key file is empty"
+_LOCAL_BRIDGE_ENDPOINT_RE = re.compile(r"^https?://(?:127\.0\.0\.1|localhost):\d+/sse$", re.IGNORECASE)
 
 
 class GroqError(RuntimeError):
@@ -46,12 +53,16 @@ class GroqProviderClient:
     ) -> None:
         self.model_id = str(model_id)
         self._agent = dict(agent)
-        base = str(agent.get("groq_base_url") or _DEFAULT_BASE_URL).strip()
+        configured_base = str(agent.get("groq_base_url") or "").strip()
+        fallback_endpoint = str(agent.get("endpoint") or "").strip()
+        if fallback_endpoint and _LOCAL_BRIDGE_ENDPOINT_RE.match(fallback_endpoint):
+            fallback_endpoint = ""
+        base = str(configured_base or fallback_endpoint or _DEFAULT_BASE_URL).strip()
+        if not base:
+            base = _DEFAULT_BASE_URL
         self._base = base.rstrip("/")
         self._api_key = self._read_api_key(api_key_path)
 
-        if not self._base:
-            raise ValueError("Missing groq_base_url")
         if not (self._base.startswith("https://") or self._base.startswith("http://")):
             raise ValueError("Invalid groq_base_url; expected http(s) URL")
         if not self.model_id:
@@ -63,24 +74,7 @@ class GroqProviderClient:
 
         url = f"{self._base}/chat/completions"
         payload = build_groq_chat_payload(model_id=self.model_id, prompt=str(prompt))
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url=url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._api_key}",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as http_exc:
-            status_code = int(getattr(http_exc, "code", 0) or 0)
-            raise GroqHTTPError(status_code, f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
-        except Exception as exc:
-            raise GroqError(_GENERIC_UNREACHABLE_MESSAGE) from exc
+        raw = self._post_chat_completion(url=url, payload=payload)
 
         try:
             parsed = json.loads(raw.decode("utf-8"))
@@ -112,6 +106,43 @@ class GroqProviderClient:
             "tokens_output": tokens_out,
             **cost_result,
         }
+
+    def _post_chat_completion(self, *, url: str, payload: dict[str, Any]) -> bytes:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
+        }
+        if requests is not None:
+            try:
+                response = requests.request(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=_HTTP_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                raise GroqError(_GENERIC_UNREACHABLE_MESSAGE) from exc
+            status_code = int(getattr(response, "status_code", 0) or 0)
+            if status_code >= 400:
+                raise GroqHTTPError(status_code, f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}")
+            return bytes(getattr(response, "content", b"") or b"")
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url=url,
+            data=data,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as http_exc:
+            status_code = int(getattr(http_exc, "code", 0) or 0)
+            raise GroqHTTPError(status_code, f"HTTP {status_code}: {_GENERIC_HTTP_MESSAGE}") from http_exc
+        except Exception as exc:
+            raise GroqError(_GENERIC_UNREACHABLE_MESSAGE) from exc
 
     def _read_api_key(self, api_key_path: str) -> str:
         path = Path(str(api_key_path)).expanduser()

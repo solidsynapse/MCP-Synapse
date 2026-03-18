@@ -293,3 +293,50 @@ P4 UI PREP is ALLOWED when:
   - D-029 remains binding.
   - Enforcement is allowed because it is deterministic, local, and user-configured rather than hidden behavior.
 
+## D-043 - Flexible DB schema migration target for domain-agnostic expansion
+
+- Date: 2026-03-18
+- Decision:
+  - Future DB migration target is an `entities + edges + JSONB` pattern for the domain-agnostic expansion lane.
+  - The current rigid table structure remains in place until `v1.3+`.
+- Migration prerequisite:
+  - Stable user base.
+  - Active revenue.
+
+## D-044 - Rust migration strategy
+
+- Date: 2026-03-18
+- Decision:
+  - The Rust migration path is hybrid sidecar-to-native.
+  - Migration starts with the highest CPU module, currently the pipeline dispatcher.
+- Hard prerequisites:
+  - PMF confirmed.
+  - Revenue active.
+  - User base stable.
+- Target:
+  - `v1.3+`
+- Constraint:
+  - Do not migrate before the prerequisites are met.
+
+## D-045 - Cross-platform expansion order
+
+- Date: 2026-03-18
+- Decision:
+  - Platform expansion order is fixed:
+    1. Windows (current)
+    2. macOS
+    3. Linux
+- Constraints:
+  - macOS requires Apple Developer account, notarization, and CI/CD automation before release.
+  - Each new platform is authorized only after confirmed revenue from the previous platform stage.
+
+## D-046 - REST adapter response caching
+
+- Date: 2026-03-18
+- Decision:
+  - REST adapter snapshot responses may be cached within a configurable TTL window.
+  - Default TTL is `60s`.
+  - Cache is local, in-memory, and per-connection.
+- Target:
+  - `v1.1+`
+

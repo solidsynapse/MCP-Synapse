@@ -99,3 +99,26 @@ def test_p5x_preflight_rest_api_requires_response_mapping() -> None:
     )
     assert result["ok"] is False
     assert "response_field is required for rest_api" in (result.get("errors") or [])
+
+
+def test_p5x_list_connections_preserves_provider_endpoint_and_surfaces_runtime_endpoint() -> None:
+    connections = [
+        {
+            "id": "rest-1",
+            "connection_name": "REST Demo",
+            "provider_id": "rest_api",
+            "model_id": "custom_rest_api",
+            "endpoint": "https://api.example.com/v1/respond",
+            "runtime_endpoint": "http://127.0.0.1:5511/sse",
+            "port": 5511,
+            "status": "running",
+        }
+    ]
+    mgr = ServerManager(config=_DummyConfig(connections))
+
+    result = mgr.list_connections()
+
+    assert result["ok"] is True
+    row = result["connections"][0]
+    assert row["endpoint"] == "https://api.example.com/v1/respond"
+    assert row["runtime_endpoint"] == "http://127.0.0.1:5511/sse"

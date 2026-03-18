@@ -498,6 +498,10 @@ def _dispatch_op(payload: dict) -> dict:
         mgr = ServerManager()
         return _connections_response(mgr.stop_all_connections())
 
+    if op == "connections.reset_runtime_state":
+        mgr = ServerManager()
+        return _connections_response(mgr.reset_all_connection_runtime_state_on_startup())
+
     if op == "connections.schema_hint":
         mgr = ServerManager()
         return _schema_hint_response(mgr.connections_schema_hint(payload))

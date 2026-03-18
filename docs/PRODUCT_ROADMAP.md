@@ -43,20 +43,25 @@ You open MCP Synapse, add a provider connection with your own credentials, copy 
 
 ---
 
-## Current State (as of v0.6.1)
+## Current State (as of v0.7.1)
 
 ### What is delivered and working
 - Pipeline V1 routing (deterministic execution, no silent fallback)
-- Provider support: Vertex AI, OpenAI, Azure OpenAI, HuggingFace, Ollama (first-release surface)
-- Bedrock: coded, not runtime-proven (own quota blocked testing â€” carry-forward to v0.8.x)
+- Provider support in the current codebase: Vertex AI, OpenAI, Azure OpenAI, HuggingFace, Ollama, Anthropic, Groq, Gemini, OpenRouter, DeepSeek, xAI/Grok, and Custom REST API
+- Bedrock: coded, not runtime-proven (still blocked/deferred under R018 because of quota and model-support gaps)
 - Connection lifecycle: create / edit / delete / start / stop / preflight / copy config
 - Usage: Summary + History with filters, CSV export
 - Dashboard: KPI cards, 30-day cost trend, cost breakdown, health alerts, recent requests, top expensive
 - Persona Lite: deterministic system prompt injection
 - Optimizations: context cache + request deduplication runtime effect
 - Interceptors: JSON syntax repair runtime effect
-- Budget Guard: monitor-only (enforcement intentionally deferred â€” D-031)
+- Cost transparency: litellm-backed normalization with explicit `cost_source` handling
+- Budget Guard: explicit `monitor`, `block`, and `throttle` modes
+- REST adapter snapshot: Custom REST API source with local mapping/auth configuration
+- Settings update check: notify-only GitHub release check + integrity guidance surface
+- Documentation pack: guides, feature reference, user guide, and legal minimum pack
 - Settings: get/set/persist/validate
+- IDE compatibility baseline: VS Code, Cursor, and TRAE verified
 - Tauri + SvelteKit thin-shell UI (UI never calls provider clients directly)
 
 ### What is coded but not proven
@@ -67,8 +72,8 @@ You open MCP Synapse, add a provider connection with your own credentials, copy 
 - Advanced routing: fan-out, branch, retry policies (planned Phase II)
 - Persona/Memory Studio pro level (planned Phase II)
 - Domain adapters (planned Phase III)
-- Sigstore integrity + auto-update notify (v0.9.x) - commercial signed installer post-revenue per D-038
-- Budget enforcement toggle (deferred by D-031 until dedicated package)
+- Silent auto-install / silent update path
+- Commercial signed installer (post-revenue per D-038)
 
 ---
 
@@ -97,11 +102,12 @@ Adding providers now fits the current architecture cleanly. Doing domain-agnosti
 
 #### S01 â€” Cost Transparency Layer + litellm Integration
 **Scope:**
-- Integrate **litellm** as the unified cost normalization layer â€” replaces per-provider `_estimate_cost()` functions
-- Add `cost_source` field: `ACTUAL` / `ESTIMATED` / `UNKNOWN` per provider
-- UI cost badge showing source type (so users know when cost is a guess)
-- Cross-provider cost normalization: OpenAI, Azure OpenAI, Ollama currently return `cost_usd = None` â€” resolve via litellm or explicitly mark as UNKNOWN
-- `estimation_confidence` field (LOW / MEDIUM / HIGH) â€” internal, feeds dashboard quality signal
+- **Delivered in M003/S01 (D-040).**
+- Integrated **litellm** as the unified cost normalization layer, replacing per-provider `_estimate_cost()` functions
+- Added `cost_source` field: `ACTUAL` / `ESTIMATED` / `UNKNOWN` per provider
+- Added UI cost-source visibility and low-value cost display normalization
+- Cross-provider cost normalization now resolves through the shared normalizer with explicit UNKNOWN fallback where pricing is unavailable
+- `estimation_confidence` remains a future internal depth item rather than a delivered public contract
 
 **Why litellm:** The current codebase has separate `_estimate_cost()` functions per provider. Every new provider requires a new function, every pricing change requires updating multiple files. litellm provides a unified pricing database. This is the correct architecture for a multi-provider router.
 
@@ -137,44 +143,46 @@ Adding providers now fits the current architecture cleanly. Doing domain-agnosti
 
 #### S05 â€” MCP Capability Types + IDE Compatibility Matrix
 **Scope:**
-- MCP capability type registry: copy config generates correct capability declarations per provider type (text, image, structured data) â€” fixes `_text_only` appearance in IDE tool pickers
-- IDE compatibility matrix: one connection test + copy config verification for VS Code, Claude Code, Codex/GitHub Copilot, Gemini CLI
-- Result documented as tested compatibility list
+- Delivered MCP capability registry and IDE-specific copy-config UX
+- Verified IDE compatibility matrix for VS Code, Cursor, and TRAE
+- Claude Code CLI remained explicitly skipped in the evidence set for environment/budget reasons
 
 **Why:** The `_text_only` label in IDE tool pickers is a UX signal that the product only partially declares its capabilities. And untested IDE compatibility is invisible technical debt that surfaces as user-reported bugs.
 
-### M004 â€” v0.9.x: Provider Wave 2 + Release Productization
+### M004 â€” v0.9.x: Provider Wave 2 + Release Productization âœ… COMPLETE
 
 **Theme:** Expand provider coverage and make the product shippable as a real product â€” Sigstore-backed release integrity, update channel, rollback.
 
-#### S01 â€” Provider Wave 2: Anthropic + Groq + GLM
+#### S01 â€” Provider Wave 2: Anthropic + Groq + Gemini + OpenRouter + DeepSeek + xAI
 **Scope:**
-- Anthropic provider adapter: contract exists (`anthropic_contract_pr4.py`), needs runtime client + factory registration
-- Groq provider adapter: contract exists (`groq_contract_pr5.py`), needs runtime client + factory registration
-- GLM (Zhipu AI) provider adapter: China-market path, API is MCP-ecosystem active
-- Each must pass: preflight â†’ runtime smoke â†’ usage row written â†’ cost behavior via litellm
-- UI provider picker updated
+- Anthropic provider adapter delivered and registered in `factory.py`
+- Groq provider adapter delivered and registered in `factory.py`
+- Gemini provider adapter delivered as Google AI Studio path (not Vertex)
+- OpenRouter, DeepSeek, and xAI/Grok delivered via OpenAI-compatible adapter path
+- Each delivered provider is represented in the Connections surface and current factory registration
 
 **Why Anthropic first:** Most-requested missing provider from target user base.
 **Why Groq:** Speed differentiation â€” lowest latency option for vibe-coders.
-**Why GLM over Alibaba:** GLM API is more mature and MCP-ecosystem active. Alibaba (Qwen) moves to v1.1.
+**Why OpenRouter:** Broad model coverage through a single adapter.
+**Why DeepSeek and xAI:** Minimal-effort OpenAI-compatible expansion path.
 **Why not LM Studio here:** Narrower local-model audience, lower urgency. Post-v1.0.
 
-#### S02 â€” Provider Wave 2: Bedrock Resolution
-**Scope:** Only if S02 of M003 did not achieve PASS. Final attempt or explicit public BLOCKED declaration.
+#### S02 â€” Bedrock Early Access UI Badge
+**Scope:** Delivered as an explicit Early Access surface with user-facing runtime-test warning. Bedrock remains coded but not runtime-proven, and the blocker remains quota/model-support dependent rather than silently reclassified as supported.
 
 #### S03 â€” Budget Enforcement Toggle
 **Scope:**
-- D-031 dedicated package: implement budget enforcement (block / throttle modes)
-- This is the flip from monitor-only to actionable budget control
-- Requires: separate SSOT decision, dedicated test suite, explicit user-facing control
+- D-042 delivered the dedicated package: `monitor`, `block`, and `throttle`
+- This is the completed flip from monitor-only to actionable budget control
+- Enforcement is explicit, user-facing, and deterministic rather than hidden behavior
 
 **Why now:** By v0.9 the core is stable enough to add enforcement without regression risk. Budget guard has been monitor-only since the beginning. Professional developers expect actionable limits.
 
 #### S04 â€” Release Productization (Revised)
 **Scope:**
-- **Sigstore** artifact integrity proof (free, developer-credible alternative to commercial signing)
-- Auto-update channel: notify user of new version, manual install. Silent auto-install requires signed binary â€” deferred.
+- Notify-only update channel: check current GitHub release and direct the user to the release surface
+- Integrity guidance surface aligned to D-038, including SHA256 verification path and Sigstore positioning
+- Commercial signing remains post-revenue; silent auto-install remains deferred
 - Rollback procedure documented and tested
 - Packaging: MSI (Windows) hardening, install/uninstall clean on all supported paths
 
@@ -257,6 +265,12 @@ The correct sequence:
 - Full observability normalization: unified event schema across all providers
 - Enterprise compliance packs: audit log, policy enforcement, data-boundary controls
 
+### Decision anchors for v1.3+
+- **D-043:** Future DB migration target is `entities + edges + JSONB`; current rigid tables remain until `v1.3+`, and migration requires a stable user base plus revenue.
+- **D-044:** Rust migration follows a hybrid sidecar-to-native path, beginning with the pipeline dispatcher only after PMF, active revenue, and a stable user base are confirmed.
+- **D-045:** Cross-platform order is Windows first, macOS second, Linux third; macOS additionally requires Apple Developer account, notarization, and CI/CD automation.
+- **D-046:** REST adapter response caching is authorized as a `v1.1+` local in-memory per-connection TTL cache (default `60s`) to reduce redundant identical requests.
+
 ### Provider expansion wave (post-migration, v1.3+)
 Per PROVIDER_OTHERS_EXPANSION_MATRIX (original strategic document):
 - V1.2: HuggingFace + Ollama hardening (already present, full gate pass)
@@ -268,11 +282,11 @@ Per PROVIDER_OTHERS_EXPANSION_MATRIX (original strategic document):
 
 ## Feature Classification (Complete)
 
-### Delivered (v0.6.1)
-Pipeline V1, ProviderFactory, Connection lifecycle, Copy Config, Usage Summary/History/Export, Dashboard (KPI/trend/breakdown/alerts/recent/top-expensive), Persona Lite, Optimizations, Interceptors, Budget Guard (monitor-only), Settings, Vault basic (keyring store/select/delete), Thin-shell UI dispatch, Deterministic error contract, Runtime terminal proof discipline.
+### Delivered (v0.7.1 baseline + completed milestones through M004)
+Pipeline V1, ProviderFactory, Connection lifecycle, Copy Config, Usage Summary/History/Export, Dashboard (KPI/trend/breakdown/alerts/recent/top-expensive), Persona Lite, Optimizations, Interceptors, Settings, Vault basic (keyring store/select/delete), Thin-shell UI dispatch, Deterministic error contract, Runtime terminal proof discipline, cost transparency via litellm, Budget Guard enforcement modes, Documentation/compliance pack, IDE compatibility baseline, wave-2 providers (Anthropic, Groq, Gemini, OpenRouter, DeepSeek, xAI), Bedrock Early Access UI badge, notify-only update check, REST adapter snapshot.
 
-### Active (M003â€“M005)
-Cost transparency layer, Performance/security baseline closure, Documentation/compliance pack, Anthropic + Groq providers, Budget enforcement toggle, Sigstore integrity (D-038), Auto-update, Chain Editor v1, Advanced routing (retry/failover), Vault UX expansion, Persona/Memory Studio Lite.
+### Active (M005+)
+Chain Editor v1, Advanced routing (retry/failover), Vault UX expansion, Persona/Memory Studio Lite, IDE compatibility polish, Routing Advisor, WebSocket/streaming adapter.
 
 ### Deferred (post-v1.0, pre-migration)
 Pricing version/timestamp tracking, Provider quality score, Full tooltip/helper system, Usage Summary filter parity polish, Usage History row-details modal, Audit log (basic), Performance optimization pack (async+cache), Full destructive confirmations surface, LM Studio provider, Google AI Studio provider, Bedrock runtime proof (R018 - blocked pending quota resolution).
@@ -330,12 +344,11 @@ The original plan was to use **litellm's cost module** as a unified pricing laye
 **Delivered in M003/S01 (D-040):** litellm is now the approved cost-normalization layer. Provider-specific cost paths delegate to the unified normalizer, with explicit fallback behavior and no silent zero-cost success.
 
 ### Provider contracts vs runtime registration gap
-Three providers have contract files but are not registered in `factory.py`:
-- `anthropic_contract_pr4.py` â€” contract exists, no runtime client
-- `groq_contract_pr5.py` â€” contract exists, no runtime client
+Current `factory.py` registrations now include Anthropic, Groq, Gemini, OpenRouter, DeepSeek, xAI, and `rest_api`.
+Remaining contract-only gap in this area:
 - `lmstudio_contract_pr7.py` â€” contract exists, no runtime client
 
-These are M004/S01 (Anthropic + Groq) and post-v1.0 (LM Studio) work items.
+Anthropic and Groq are no longer gaps; they were delivered in M004/S01.
 
 ### Python â€” long-term sustainability
 Python backend is the right choice through Phase II. Reasons:
@@ -363,7 +376,7 @@ Target from historical docs: <250MB (current lane), <150MB (aspirational).
 ### MCP capability types â€” current limitation
 Copy config currently generates JSON with text-only capability declaration. This is why connections appear as `_text_only` in IDE tool pickers. This reflects the current product reality (LLM text responses). As the product expands to image generation providers, structured data sources, and real-time feeds, capability types must be declared correctly.
 
-**Action:** M003 or M004 â€” add MCP capability type registry. Copy config generates correct capability declarations per provider type.
+**Delivered in M003/S05:** MCP capability registry and IDE-specific copy-config surfaces are now present. The remaining future work is capability expansion beyond the current text-centric product surface.
 
 ### IDE compatibility â€” current state
 Actively tested: VS Code, Cursor, and TRAE.
@@ -379,7 +392,7 @@ PASS status:
 Current: non-streaming SSE, each request independent.
 The architecture naturally extends to REST adapters (any REST API as MCP bridge) and eventually WebSocket adapters (real-time data feeds).
 
-**Per updated D-037:** REST adapter is v1.1.x scope. It fits the current ProviderFactory model technically, but adding it before v1.0 would dilute focus. v1.1.x is the correct placement â€” after pro developer surface is established.
+**Per updated D-037:** REST adapter snapshot was delivered in M004/S05. Future expansion now shifts to response caching (`v1.1+` per D-046) and later WebSocket/streaming adapters.
 WebSocket adapter: requires persistent connection management â€” cleaner post-migration (v1.3+).
 
 ### "Everything-to-everything" positioning
@@ -430,11 +443,11 @@ This is not a new idea â€” it exists in the strategic documents. But it was
 
 | Version | Theme |
 |---|---|
-| v0.6.1 | Current release (Early Access) |
+| v0.7.1 | Current released baseline (Early Access) |
 | v0.7.x âœ… | Release hardening (DONE) |
 | v0.8.x | Capability depth + provider wave 1 (cost transparency, Bedrock proof attempt, docs, perf/security) |
-| v0.9.x | Provider wave 2 + release productization (Anthropic, Groq, GLM, Sigstore (D-038), auto-update) |
+| v0.9.x âœ… | Provider wave 2 + release productization (Anthropic, Groq, Gemini, OpenRouter, DeepSeek, xAI, budget enforcement, update channel, REST adapter) |
 | v1.0.x | Pro developer surface (Chain Editor wizard, routing ADR + basic policies, Vault expansion, Persona Studio) |
-| v1.1.x | REST adapter + IDE compatibility matrix + Routing Advisor |
+| v1.1.x | IDE compatibility polish + Routing Advisor + WebSocket/streaming adapter |
 | v1.2.x | Chain graph editor + post-v1.0 polish + deferred items |
 | v1.3+ | Domain-agnostic migration + vertical adapters + RAG layer |

@@ -92,7 +92,7 @@ class ServerManager:
                 return int(connection.get("port"))
             except Exception:
                 return None
-        endpoint = str(connection.get("endpoint") or "").strip()
+        endpoint = str(connection.get("runtime_endpoint") or connection.get("endpoint") or "").strip()
         m = re.match(r"^https?://(?:127\.0\.0\.1|localhost):(\d+)/sse$", endpoint)
         if not m:
             return None
@@ -100,6 +100,11 @@ class ServerManager:
             return int(m.group(1))
         except Exception:
             return None
+
+    @staticmethod
+    def _is_local_bridge_endpoint(value: str) -> bool:
+        endpoint = str(value or "").strip()
+        return bool(re.match(r"^https?://(?:127\.0\.0\.1|localhost):\d+/sse$", endpoint))
 
     @staticmethod
     def _probe_sse_endpoint(port: int, timeout_seconds: float = 0.5) -> tuple[bool, str, str]:
@@ -298,9 +303,9 @@ class ServerManager:
     def _runtime_command(connection_id: str, name: str, port: int) -> list[str]:
         runtime_python = sys.executable
         if os.name == "nt":
-            pythonw = Path(sys.executable).with_name("pythonw.exe")
-            if pythonw.exists():
-                runtime_python = str(pythonw)
+            python_exe = Path(sys.executable).with_name("python.exe")
+            if python_exe.exists():
+                runtime_python = str(python_exe)
         return [
             runtime_python,
             "-m",
@@ -398,6 +403,14 @@ class ServerManager:
             server.stop()
             self._config.update_agent_status(agent_id, "stopped")
             del self.active_agents[agent_id]
+        try:
+            connection_result = self.stop_all_connections()
+            if not connection_result.get("ok", False):
+                logger.warning("Connection runtime cleanup reported errors: %s", connection_result.get("errors"))
+            if connection_result.get("warnings"):
+                logger.info("Connection runtime cleanup warnings: %s", connection_result.get("warnings"))
+        except Exception as exc:
+            logger.warning("Connection runtime cleanup failed during stop_all: %s", exc)
         logger.info("All agents stopped")
 
     def list_connections(self) -> dict[str, object]:
@@ -415,7 +428,7 @@ class ServerManager:
             if status == "running":
                 connection["status"] = "running"
                 if port is not None:
-                    connection["endpoint"] = f"http://127.0.0.1:{int(port)}/sse"
+                    connection["runtime_endpoint"] = f"http://127.0.0.1:{int(port)}/sse"
                 if pid > 0:
                     connection["runtime_pid"] = int(pid)
         return {"ok": True, "errors": [], "warnings": [], "connections": connections}
@@ -2170,6 +2183,17 @@ class ServerManager:
             suggested_defaults["aws_region"] = "us-east-1"
             suggested_defaults["credential_source"] = "file"
 
+        if provider == "groq":
+            for f in fields:
+                if not isinstance(f, dict):
+                    continue
+                field_id = str(f.get("id") or "").strip()
+                if field_id == "endpoint":
+                    f["required"] = False
+                    f["placeholder"] = "https://api.groq.com/openai/v1"
+                    f["help"] = "Optional Groq OpenAI-compatible base URL. Leave blank to use the provider default."
+            notes.append("Leave Endpoint / Base URL blank to use the Groq default API base URL.")
+
         if provider == "azure_openai":
             fields = [
                 f
@@ -2373,6 +2397,10 @@ class ServerManager:
             hf_enabled = hf_enable_text in {"true", "1", "yes", "on"}
             if not hf_enabled:
                 errors.append("hf_enable_network must be true for live calls")
+        elif provider_id == "groq":
+            groq_base_url = str(payload.get("groq_base_url") or endpoint).strip()
+            if groq_base_url:
+                errors.extend(self._validate_http_endpoint(groq_base_url, "endpoint"))
         elif provider_id == "rest_api":
             auth_type = str(payload.get("auth_type") or "none").strip().lower()
             method = str(payload.get("method") or "POST").strip().upper()
@@ -2484,6 +2512,11 @@ class ServerManager:
             normalized_payload.pop("endpoint", None)
             if hf_endpoint:
                 normalized_payload["hf_endpoint"] = hf_endpoint
+        elif provider_id == "groq":
+            groq_base_url = str(payload.get("groq_base_url") or endpoint).strip()
+            normalized_payload.pop("endpoint", None)
+            if groq_base_url:
+                normalized_payload["groq_base_url"] = groq_base_url
         elif provider_id == "rest_api":
             auth_type = str(payload.get("auth_type") or "none").strip().lower()
             method = str(payload.get("method") or "POST").strip().upper()
@@ -2619,7 +2652,9 @@ class ServerManager:
             "model_id": str(current.get("model_id") or ""),
         }
         if "endpoint" in current:
-            merged_payload["endpoint"] = str(current.get("endpoint") or "")
+            current_endpoint = str(current.get("endpoint") or "").strip()
+            if current_endpoint and not self._is_local_bridge_endpoint(current_endpoint):
+                merged_payload["endpoint"] = current_endpoint
         if "credentials_path" in current:
             merged_payload["credentials_path"] = str(current.get("credentials_path") or "")
         for key, value in existing_options.items():
@@ -3013,7 +3048,71 @@ class ServerManager:
             "connections": self._config.list_connections(),
         }
 
-    def stop_all_connections(self) -> dict[str, object]:
+    def _force_stop_connection_runtime(self, connection_id: str, connection: dict) -> dict[str, object]:
+        port = self._connection_port(connection)
+        runtime_pid_raw = connection.get("runtime_pid")
+        runtime_pid = int(runtime_pid_raw) if isinstance(runtime_pid_raw, int) or str(runtime_pid_raw).isdigit() else 0
+        candidate_pids: list[int] = []
+        if runtime_pid > 0:
+            candidate_pids.append(int(runtime_pid))
+        if port is not None:
+            owner_pid = self._listener_pid_for_port(port)
+            if owner_pid is not None and owner_pid > 0 and int(owner_pid) not in candidate_pids:
+                candidate_pids.append(int(owner_pid))
+
+        termination_errors: list[str] = []
+        for pid in candidate_pids:
+            terminated, terminate_err = self._terminate_runtime_process(int(pid))
+            if not terminated:
+                termination_errors.append(f"pid={int(pid)}: {terminate_err}")
+
+        deadline = time.time() + 1.5
+        while time.time() < deadline:
+            pid_alive = any(self._runtime_proc_alive(int(pid)) for pid in candidate_pids)
+            endpoint_alive = port is not None and self._endpoint_reachable(port)
+            if not pid_alive and not endpoint_alive:
+                break
+            time.sleep(0.05)
+
+        pid_alive = any(self._runtime_proc_alive(int(pid)) for pid in candidate_pids)
+        endpoint_alive = port is not None and self._endpoint_reachable(port)
+        if endpoint_alive and port is not None:
+            owner_pid = self._listener_pid_for_port(port)
+            if owner_pid is not None and owner_pid > 0 and int(owner_pid) not in candidate_pids:
+                terminated, terminate_err = self._terminate_runtime_process(int(owner_pid))
+                if not terminated:
+                    termination_errors.append(f"pid={int(owner_pid)}: {terminate_err}")
+                else:
+                    candidate_pids.append(int(owner_pid))
+                deadline = time.time() + 0.75
+                while time.time() < deadline and self._endpoint_reachable(port):
+                    time.sleep(0.05)
+                endpoint_alive = self._endpoint_reachable(port)
+
+        if termination_errors:
+            return {
+                "ok": False,
+                "errors": [f"force stop failed: {'; '.join(termination_errors)}"],
+                "warnings": [],
+                "connections": self._config.list_connections(),
+            }
+        if pid_alive or endpoint_alive:
+            return {
+                "ok": False,
+                "errors": ["force stop failed: runtime process still alive"],
+                "warnings": [],
+                "connections": self._config.list_connections(),
+            }
+
+        self._config.update_connection_runtime(connection_id, "stopped", endpoint=None, runtime_pid=None)
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": [],
+            "connections": self._config.list_connections(),
+        }
+
+    def stop_all_connections(self, force: bool = True) -> dict[str, object]:
         errors: list[str] = []
         warnings: list[str] = []
         for connection in self._config.list_connections():
@@ -3033,7 +3132,10 @@ class ServerManager:
             )
             if not should_stop:
                 continue
-            result = self.stop_connection({"connection_id": connection_id})
+            if force:
+                result = self._force_stop_connection_runtime(connection_id, connection)
+            else:
+                result = self.stop_connection({"connection_id": connection_id})
             if result.get("ok"):
                 for warning in result.get("warnings", []) or []:
                     warnings.append(f"{connection_id}: {warning}")
@@ -3044,6 +3146,38 @@ class ServerManager:
             "ok": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
+            "connections": self._config.list_connections(),
+        }
+
+    def reset_all_connection_runtime_state_on_startup(self) -> dict[str, object]:
+        errors: list[str] = []
+        warnings: list[str] = []
+        changed = 0
+        for connection in self._config.list_connections():
+            if not isinstance(connection, dict):
+                continue
+            connection_id = str(connection.get("id") or "").strip()
+            if not connection_id:
+                continue
+            status = str(connection.get("status") or "").strip().lower()
+            runtime_pid_raw = connection.get("runtime_pid")
+            runtime_pid = int(runtime_pid_raw) if isinstance(runtime_pid_raw, int) or str(runtime_pid_raw).isdigit() else 0
+            runtime_endpoint = str(connection.get("runtime_endpoint") or "").strip()
+            should_reset = status == "running" or runtime_pid > 0 or bool(runtime_endpoint)
+            if not should_reset:
+                continue
+            changed += 1
+            if runtime_pid > 0 or (self._connection_port(connection) is not None and self._endpoint_reachable(self._connection_port(connection) or 0)):
+                result = self._force_stop_connection_runtime(connection_id, connection)
+                if not result.get("ok", False):
+                    errors.extend([str(value) for value in result.get("errors", []) or []])
+                    warnings.append(f"{connection_id}: runtime cleanup required forced metadata reset")
+            self._config.update_connection_runtime(connection_id, "stopped", endpoint=None, runtime_pid=None)
+        return {
+            "ok": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "changed": changed,
             "connections": self._config.list_connections(),
         }
 
@@ -3097,7 +3231,7 @@ class ServerManager:
                     return int(connection.get("port"))
                 except Exception:
                     return None
-            endpoint = str(connection.get("endpoint") or "").strip()
+            endpoint = str(connection.get("runtime_endpoint") or connection.get("endpoint") or "").strip()
             m = re.match(r"^https?://localhost:(\d+)/sse$", endpoint)
             if m:
                 try:
