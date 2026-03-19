@@ -88,3 +88,6 @@ coverage/
 mcp-router.pytest_tmp/
 
 .pytest_tmp/
+
+.gsd/
+AGENTS.md
