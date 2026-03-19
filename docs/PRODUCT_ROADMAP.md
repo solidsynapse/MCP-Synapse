@@ -28,7 +28,7 @@ You open MCP Synapse, add a provider connection with your own credentials, copy 
 
 ### Phase I â€” IDE-Focused Hardening (Now â†’ v0.9.x)
 **Goal:** Become the most reliable local MCP router for vibe-coders and solo builders.  
-**Distribution:** Free. Open to grow. Wins by trust, not feature count.  
+**Distribution:** Free core through `v0.8.x`. The freemium/premium split begins in `v0.9`, but trust and usability still win before feature count.  
 **Success signal:** Developer installs it, connects a provider, uses it in their IDE for a week without friction.
 
 ### Phase II â€” Pro Developer Surface (v1.0 â†’ v1.2)
@@ -43,7 +43,7 @@ You open MCP Synapse, add a provider connection with your own credentials, copy 
 
 ---
 
-## Current State (as of v0.7.1)
+## Current State (as of v0.8.0)
 
 ### What is delivered and working
 - Pipeline V1 routing (deterministic execution, no silent fallback)
@@ -149,9 +149,9 @@ Adding providers now fits the current architecture cleanly. Doing domain-agnosti
 
 **Why:** The `_text_only` label in IDE tool pickers is a UX signal that the product only partially declares its capabilities. And untested IDE compatibility is invisible technical debt that surfaces as user-reported bugs.
 
-### M004 â€” v0.9.x: Provider Wave 2 + Release Productization âœ… COMPLETE
+### M004 â€” Pull-Forward Package Executed During the v0.8.0 Public Release Cut âœ… COMPLETE
 
-**Theme:** Expand provider coverage and make the product shippable as a real product â€” Sigstore-backed release integrity, update channel, rollback.
+**Theme:** Expand provider coverage and complete the productization package that was originally planned for the `v0.9.x` lane, but publicly shipped early in `v0.8.0` while milestone evidence remained recorded under `M004`.
 
 #### S01 â€” Provider Wave 2: Anthropic + Groq + Gemini + OpenRouter + DeepSeek + xAI
 **Scope:**
@@ -176,7 +176,7 @@ Adding providers now fits the current architecture cleanly. Doing domain-agnosti
 - This is the completed flip from monitor-only to actionable budget control
 - Enforcement is explicit, user-facing, and deterministic rather than hidden behavior
 
-**Why now:** By v0.9 the core is stable enough to add enforcement without regression risk. Budget guard has been monitor-only since the beginning. Professional developers expect actionable limits.
+**Why now:** The core is now stable enough to add enforcement without regression risk. Budget guard had been monitor-only since the beginning, and professional developers expect actionable limits once the surface is ready.
 
 #### S04 â€” Release Productization (Revised)
 **Scope:**
@@ -186,7 +186,7 @@ Adding providers now fits the current architecture cleanly. Doing domain-agnosti
 - Rollback procedure documented and tested
 - Packaging: MSI (Windows) hardening, install/uninstall clean on all supported paths
 
-**Sigstore integrity (D-038) stance:** Commercial certificate (~$300-400/year) deferred to post-revenue. Sigstore provides cryptographic artifact integrity for developer audience. UNSIGNED_NOTICE.md remains until commercial signing ships.
+**Sigstore integrity (D-038) stance:** The notify-only update surface and integrity guidance shipped in `v0.8.0`. Commercial certificate (~$300-400/year) remains deferred to post-revenue, and Sigstore implementation remains the planned trust-step for the later monetization lane.
 
 #### S05 â€” REST Adapter (Non-LLM Sources)
 **Scope:**
@@ -392,7 +392,7 @@ PASS status:
 Current: non-streaming SSE, each request independent.
 The architecture naturally extends to REST adapters (any REST API as MCP bridge) and eventually WebSocket adapters (real-time data feeds).
 
-**Per updated D-037:** REST adapter snapshot was delivered in M004/S05. Future expansion now shifts to response caching (`v1.1+` per D-046) and later WebSocket/streaming adapters.
+**Per updated D-037:** REST adapter snapshot was delivered in `M004/S05` and publicly shipped in `v0.8.0`. Future expansion now shifts to response caching (`v1.1+` per D-046) and later WebSocket/streaming adapters.
 WebSocket adapter: requires persistent connection management â€” cleaner post-migration (v1.3+).
 
 ### "Everything-to-everything" positioning
@@ -419,7 +419,7 @@ RAG layer (Supabase, Postgres+pgvector, Qdrant) is the Phase III expression of t
 
 **GLM / China-market path:** Legitimate expansion target per PROVIDER_OTHERS_EXPANSION_MATRIX. Sequenced to v1.3-A after core provider waves are proven. Compliance and region notes required before shipping.
 
-**Auto-update with silent install:** Dangerous without code signing. Sigstore integrity comes in v0.9.x (S04). Commercial code signing is post-revenue per D-038. Auto-update with silent install is a v1.0+ feature. Notify-only update (check and inform) is acceptable in v0.9.x.
+**Auto-update with silent install:** Dangerous without code signing. Notify-only update already shipped in `v0.8.0`. Sigstore implementation remains the planned trust step for `v0.9`, commercial code signing is post-revenue per D-038, and silent install remains a `v1.0+` feature.
 
 **Usage History row-details modal:** Currently not on the product surface. Low urgency relative to other items. Deferred â€” not forgotten.
 
@@ -443,10 +443,10 @@ This is not a new idea â€” it exists in the strategic documents. But it was
 
 | Version | Theme |
 |---|---|
-| v0.7.1 | Current released baseline (Early Access) |
+| v0.8.0 | Current released baseline (Early Access) |
 | v0.7.x âœ… | Release hardening (DONE) |
-| v0.8.x | Capability depth + provider wave 1 (cost transparency, Bedrock proof attempt, docs, perf/security) |
-| v0.9.x âœ… | Provider wave 2 + release productization (Anthropic, Groq, Gemini, OpenRouter, DeepSeek, xAI, budget enforcement, update channel, REST adapter) |
+| v0.8.x âœ… | Capability depth + provider wave 1 plus selected pull-forward public delivery (provider wave 2 adapters, budget enforcement, notify-only update surface, REST adapter) |
+| v0.9.x | Freemium/premium split begins + Sigstore trust implementation + first commercial monetization lane |
 | v1.0.x | Pro developer surface (Chain Editor wizard, routing ADR + basic policies, Vault expansion, Persona Studio) |
 | v1.1.x | IDE compatibility polish + Routing Advisor + WebSocket/streaming adapter |
 | v1.2.x | Chain graph editor + post-v1.0 polish + deferred items |
