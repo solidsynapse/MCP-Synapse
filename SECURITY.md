@@ -2,11 +2,7 @@
 
 ## Supported Release Line
 
-Security review and disclosure handling currently apply to the active Early Access release lane:
-
-- `v0.6.x`
-
-The active working SSOT lives under [`.gsd/`](.gsd/). [`docs/`](docs/) remains the historical archive and release/documentation surface.
+Security review and disclosure handling currently apply to the active Early Access release lane: `v0.8.x`
 
 ## Reporting a Vulnerability
 
@@ -34,7 +30,7 @@ Do not post unpatched security issues publicly first.
 
 - Local-first operation and BYOK credential model
 - Provider calls are user-configured and stay within configured provider boundaries
-- Deterministic product-path behavior (no hidden retry/backoff or silent fallback per SSOT)
+- Deterministic product-path behavior (no hidden retry/backoff or silent fallback)
 
 ## Unsigned Early Access Notice
 
@@ -43,8 +39,7 @@ This release lane is temporarily unsigned. Windows SmartScreen may show warnings
 Before running a release artifact:
 
 1. Download from the official release channel.
-2. Verify hashes from [`docs/release/releases/v0.6.1/SHA256SUMS.txt`](docs/release/releases/v0.6.1/SHA256SUMS.txt).
-3. Review [`docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md`](docs/release/releases/v0.6.1/UNSIGNED_NOTICE.md).
+2. Verify hashes from [`docs/release/releases/v0.8.0/SHA256SUMS.txt`](docs/release/releases/v0.8.0/SHA256SUMS.txt) included in the release assets.
 
 ## Scope
 
